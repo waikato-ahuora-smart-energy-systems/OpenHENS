@@ -1,0 +1,18 @@
+Number;Subsystem;Description;Designation;Supply Temp;Target Temp;Flow heat capacity;HTC;Stream cost
+;;;;T_in;T_out;f;htc;_cost
+;;;;K;K;kW/K;kW/m2-K;$/kW-y
+1;Process A;Raw Milk ;Hot;500;320;6;2;0
+2;Process A;HT Flash;Hot;480;380;4;2;0
+3;Process A;;Hot;460;360;6;2;0
+4;Process A;;Hot;380;360;20;2;0
+5;Process A;;Hot;380;320;12;2;0
+1;Process A;Milk Concentrate;Cold;290;660;18;2;0
+1;Utility;HPS;Hot Utility;700;700;0;2;140
+1;Utility;CW;Cold Utility;300;320;0;2;10
+;;;;;;;;
+Number;Subsystem;Description;Designation;HX unit cost;HX area coefficient;HX area exponent;;
+;;;;unit_cost;_coeff;A_exp;;
+;;;;$/y;$/m2-y;;;
+1;Process A;Process-process HX;Exchange;0;1200;0.6;;
+1;Utility;Process-heater HX;Heating;0;1200;0.6;;
+1;Utility;Process-cooler HX;Cooling;0;1200;0.6;;

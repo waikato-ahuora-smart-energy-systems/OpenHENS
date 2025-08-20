@@ -1,0 +1,25 @@
+Number;Subsystem;Description;Designation;Supply Temp;Target Temp;Flow heat capacity;HTC;Stream cost
+;;;;T_in;T_out;f;htc;_cost
+;;;;K;K;kW/K;kW/m2-K;$/kW-y
+1;Process A;TCR;Hot;413.35;312.65;106.5;0.26;0
+2;Process A;LGO;Hot;521.95;383.15;31.8;0.72;0
+3;Process A;KEROSENE;Hot;443.25;333.15;33.9;0.45;0
+4;Process A;HGO;Hot;550.15;395.05;24.9;0.57;0
+5;Process A;HVGO;Hot;523.75;363.15;132.2;0.26;0
+6;Process A;MCR;Hot;483.15;436.15;115.8;0.33;0
+7;Process A;LCR;Hot;576.75;543.35;235;0.41;0
+8;Process A;VR1;Hot;633.15;563.15;39.8;0.47;0
+9;Process A;LVGO;Hot;451.75;382.05;47.9;0.6;0
+10;Process A;SR-Quench;Hot;632.75;553.15;24.5;0.47;0
+11;Process A;VR2;Hot;563.15;388.15;39.8;0.47;0
+1;Process A;crude;Cold;303.15;403.15;202.5;0.26;0
+2;Process A;crude;Cold;403.15;623.15;289.9;0.72;0
+1;Utility;HPS;Hot Utility;773.15;772.15;0;0.53;100
+1;Utility;CW;Cold Utility;293.15;313.15;0;0.53;10
+;;;;;;;;
+Number;Subsystem;Description;Designation;HX unit cost;HX area coefficient;HX area exponent;;
+;;;;unit_cost;_coeff;A_exp;;
+;;;;$/y;$/m2-y;;;
+1;Process A;Process-process HX;Exchange;25000;55;1;;
+1;Utility;Process-heater HX;Heating;25000;55;1;;
+1;Utility;Process-cooler HX;Cooling;25000;55;1;;

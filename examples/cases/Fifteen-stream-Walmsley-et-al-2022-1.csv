@@ -1,0 +1,28 @@
+Number;Subsystem;Description;Designation;Supply Temp;Target Temp;Flow heat capacity;HTC;Stream cost;T cont
+;;;;T_in;T_out;f;htc;_cost;T_cont
+;;;;K;K;kW/K;kW/m2-K;$/kW-y;K
+1;Milk evaporator;Flash 1;Hot;360;359.9;20610;0.5;0;0.5
+2;Milk evaporator;Flash 2;Hot;352.3;352.2;19890;0.5;0;0.5
+3;Milk evaporator;E1 vapour  bleed;Hot;345;344.9;39200;0.5;0;0.5
+4;Milk evaporator;E2 vapour  bleed;Hot;345;344.9;3640;0.5;0;0.5
+5;Milk evaporator;Condensate 1;Hot;345;286;181.3220339;0.5;0;2.5
+6;Milk evaporator;Condensate 2;Hot;359.9;286;3.788903924;0.5;0;2.5
+7;Milk evaporator;Condensate 3;Hot;345;286;6.983050847;0.5;0;2.5
+8;Milk evaporator;Condensate 4;Hot;344.9;286;11.9524618;0.5;0;2.5
+1;Milk evaporator;Condensate 5;Hot;352.2;286;3.625377644;0.5;0;2.5
+2;Milk evaporator;Cow heat;Hot;345.1;286;0.659898477;0.5;0;2.5
+3;Milk evaporator;Chilled water;Hot;281;275;76;0.5;0;2.5
+4;Milk evaporator;Milk concentrate;Cold;338.3;343;55.31914894;0.5;0;2.5
+5;Milk evaporator;CIP water;Cold;288;357;9.130434783;0.5;0;2.5
+6;Milk evaporator;Direct use;Cold;288;328;13.125;0.5;0;2.5
+7;Milk evaporator;Raw milk;Cold;281;368;262.4712644;0.5;0;2.5
+1;Utility;HPS;Hot Utility;380;380;0;1;80;2.5
+1;Utility;Cold brine;Cold Utility;261;275;0;2;10;2.5
+1;Utility;Electricity;Electricity;0;0;0;0;1440;2.5
+;;;;;;;;;
+Number;Subsystem;Description;Designation;HX unit cost;HX area coefficient;HX area exponent;;;
+;;;;unit_cost;_coeff;A_exp;;;
+;;;;$/y;$/m2-y;;;;
+1;Process A;Process-process HX;Exchange;8000;500;0.75;;;
+1;Utility;Process-heater HX;Heating;8000;500;0.75;;;
+1;Utility;Process-cooler HX;Cooling;8000;500;0.75;;;

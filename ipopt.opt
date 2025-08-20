@@ -1,0 +1,8 @@
+tol 1e-3                           
+acceptable_tol 1e-2                
+constr_viol_tol 1e-2           
+acceptable_constr_viol_tol 1e-1
+compl_inf_tol 1e-2                 
+max_iter 5000                    
+print_level 5      
+#nlp_scaling_method gradient-based               

@@ -1,0 +1,21 @@
+Number,Subsystem,Description,Designation,Supply Temp,Target Temp,Flow heat capacity,HTC,Stream cost,,,,,,,,,,,,,
+,,,,T_in,T_out,f,htc,_cost,,,,,,,,,,,,,
+,,,,K,K,kW/K,kW/m2-K,$/kW-y,,,,,,,,,,,,,
+1,Process A,N,Hot,600.15,313.15,100,0.5,0,,,,,,,,,,,,,
+2,Process A,N,Hot,493.15,433.15,160,0.4,0,,,,,,,,,,,,,
+3,Process A,N,Hot,493.15,333.15,60,0.14,0,,,,,,,,,,,,,
+4,Process A,N,Hot,433.15,318.15,400,0.3,0,,,,,,,,,,,,,
+1,Process A,N,Cold,373.15,573.15,100,0.35,0,,,,,,,,,,,,,
+2,Process A,N,Cold,308.15,437.15,70,0.7,0,,,,,,,,,,,,,
+3,Process A,N,Cold,358.15,411.15,350,0.5,0,,,,,,,,,,,,,
+4,Process A,N,Cold,333.15,443.15,60,0.14,0,,,,,,,,,,,,,
+5,Process A,N,Cold,413.15,573.15,200,0.6,0,,,,,,,,,,,,,
+1,Utility,HPS,Hot Utility,603.15,523.15,,0.5,60,,,,,,,,,,,,,
+1,Utility,CW,Cold Utility,288.15,303.15,,0.5,6,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,
+Number,Subsystem,Description,Designation,HX unit cost,HX area coefficient,HX area exponent,,,,,,,,,,,,,,,
+,,,,unit_cost,_coeff,A_exp,,,,,,In,,,,,,Out,,Q,LMTD
+,,,,$/y,$/m2-y,,,,,,,,,,,,,,,,
+1,Process A,Process-process HX,Exchange,2000,70,1,,,,Hot,,603.15,,,,,,602.15,,,29.50475974
+1,Utility,Process-heater HX,Heating,2000,70,1,,,,Cold,,573.135,,,,,,573.15,,1.5,30.015
+1,Utility,Process-cooler HX,Cooling,2000,70,1,,,,,,,,,,,,,,,

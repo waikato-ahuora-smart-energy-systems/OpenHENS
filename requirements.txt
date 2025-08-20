@@ -1,0 +1,10 @@
+numpy
+pandas
+gekko>=1.2.1
+openpyxl
+matplotlib
+Pyomo
+plotly
+kaleido
+nbformat>=4.2.0
+wakepy

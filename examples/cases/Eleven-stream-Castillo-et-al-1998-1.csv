@@ -1,0 +1,23 @@
+Number;Subsystem;Description;Designation;Supply Temp;Target Temp;Flow heat capacity;HTC;Stream cost
+;;;;T_in;T_out;f;htc;_cost
+;;;;K;K;kW/K;kW/m2-K;$/kW-y
+1;Process A;N;Hot;1113.15;313.15;4.9894;1.5;0
+2;Process A;N;Hot;349.15;318.15;4.684;1.5;0
+3;Process A;N;Hot;323.15;313.15;0.772;1.5;0
+4;Process A;N;Hot;453.15;350.15;0.6097;1.5;0
+5;Process A;N;Hot;453.15;452.15;292.7;0.8;0
+6;Process A;N;Hot;363.15;318.15;3.066;1.5;0
+1;Process A;N;Cold;297.15;298.15;329.8;0.8;0
+2;Process A;N;Cold;298.15;343.15;0.5383;1.5;0
+3;Process A;N;Cold;308.15;395.15;3.727;1.5;0
+4;Process A;N;Cold;363.15;453.15;0.6097;1.5;0
+5;Process A;N;Cold;453.15;454.15;2581.1;0.8;0
+1;Utility;HPS;Hot Utility;503.15;503.15;0;1.5;110
+1;Utility;CW;Cold Utility;293.15;313.15;0;0.8;15
+;;;;;;;;
+Number;Subsystem;Description;Designation;HX unit cost;HX area coefficient;HX area exponent;;
+;;;;unit_cost;_coeff;A_exp;;
+;;;;$/y;$/m2-y;;;
+1;Process A;Process-process HX;Exchange;9094;485;0.81;;
+1;Utility;Process-heater HX;Heating;9094;485;0.81;;
+1;Utility;Process-cooler HX;Cooling;9094;485;0.81;;

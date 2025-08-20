@@ -1,0 +1,20 @@
+Structure 
+- [ ] Improve structure of the .optimse, .solve. get_branch_cuts as it goes too many layers with similar descriptions
+- [ ] Remove & tidy redundant evolution toggles
+- [ ] Seperate load stream data, build model, solve model i.e evolution can do outside
+- [ ] Make it more clear what model is being passed to evolution
+- [ ] Better clarify names & framework e.g call it method 'TDM' with name 'TDM-S6-dQmin-1.0'
+- [ ] Merge pinch_decomp_model.py & stage_wise_model.py together. Perhaps wrap each model building step into its own function e.g add_energy_balances, add_logic_constraints
+- [ ] Tidy up logging for info
+- [ ] Better handling of gekko and pyomo solvers. 
+- [ ] Remove the 4th indexing thing from solved variables, make them all solved
+- [ ] Fix solver options and make them write to the solver.opt
+- [ ] Rename HENProblem to HENConstructor
+- [ ] Save solved models safely 
+
+Features
+- [ ] Add paramater matrix to force a utility match e.g trim heater/cooler
+- [ ] Pytests on benchmark problems at known feasible solution
+- [ ] Multiple utility levels
+- [ ] Video guide of using OpenHENS and how to select dTmin, stages and 
+

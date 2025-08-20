@@ -1,0 +1,30 @@
+Number,Subsystem,Description,Designation,Supply Temp,Target Temp,Flow heat capacity,HTC,Stream cost
+,,,,T_in,T_out,f,htc,_cost
+,,,,K,K,kW/K,kW/m2-K,$/kW-y
+1,Dryer,Condenser,Hot,328.15,323.15,307,1,0
+2,Dryer,Exhaust air,Hot,357.15,333.15,108,1,0
+1,Dryer,Dryer inlet air,Cold,288.15,478.15,57,1,0
+2,Dryer,FB inlet air,Cold,303.15,368.15,18,1,0
+3,Dryer,Milk concentrate,Cold,323.15,348.15,21,1,0
+4,Dryer,CIP,Cold,288.15,358.15,1,1,0
+1,Utility,HPS,Hot Utility,513.15,513.15,0,3.4,200
+1,Utility,CW,Cold Utility,298.15,313.15,0,1.7,10
+,,,,,,,,
+Number,Subsystem,Description,Designation,HX unit cost,HX area coefficient,HX area exponent,,
+,,,,unit_cost,_coeff,A_exp,,
+,,,,$/y,$/m2-y,,,
+1,Process A,Process-process HX,Exchange,1000,40000,0.8,,
+1,Utility,Process-heater HX,Heating,1000,40000,0.8,,
+1,Utility,Process-cooler HX,Cooling,1000,40000,0.8,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,

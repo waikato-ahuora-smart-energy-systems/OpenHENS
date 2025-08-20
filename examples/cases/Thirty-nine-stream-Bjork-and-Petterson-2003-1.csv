@@ -1,0 +1,51 @@
+Number;Subsystem;Description;Designation;Supply Temp;Target Temp;Flow heat capacity;HTC;Stream cost
+;;;;T_in;T_out;f;htc;_cost
+;;;;K;K;kW/K;kW/m2-K;$/kW-y
+1;Process A;None;Hot;453.15;348.15;30;2;0
+2;Process A;None;Hot;553.15;393.15;15;2.5;0
+3;Process A;None;Hot;453.15;348.15;30;2;0
+4;Process A;None;Hot;413.15;318.15;30;2;0
+5;Process A;None;Hot;493.15;393.15;25;1.5;0
+6;Process A;None;Hot;453.15;328.15;10;2;0
+7;Process A;None;Hot;443.15;318.15;30;2;0
+8;Process A;None;Hot;453.15;323.15;30;2;0
+9;Process A;None;Hot;553.15;363.15;15;2;0
+10;Process A;None;Hot;453.15;333.15;30;2;0
+11;Process A;None;Hot;393.15;318.15;30;2;0
+12;Process A;None;Hot;493.15;393.15;25;2;0
+13;Process A;None;Hot;453.15;328.15;10;2;0
+14;Process A;None;Hot;413.15;318.15;20;2;0
+15;Process A;None;Hot;413.15;333.15;70;2;0
+16;Process A;None;Hot;493.15;323.15;15;2.5;0
+17;Process A;None;Hot;493.15;333.15;10;2.5;0
+18;Process A;None;Hot;423.15;343.15;20;2;0
+19;Process A;None;Hot;413.15;353.15;70;2;0
+20;Process A;None;Hot;493.15;323.15;35;2;0
+21;Process A;None;Hot;453.15;333.15;10;2;0
+22;Process A;None;Hot;423.15;318.15;20;2.5;0
+1;Process A;None;Cold;313.15;503.15;20;1.5;0
+2;Process A;None;Cold;393.15;533.15;35;1;0
+3;Process A;None;Cold;313.15;463.15;35;1.5;0
+4;Process A;None;Cold;323.15;463.15;30;2;0
+5;Process A;None;Cold;323.15;523.15;60;2;0
+6;Process A;None;Cold;313.15;423.15;20;2;0
+7;Process A;None;Cold;313.15;423.15;20;2;0
+8;Process A;None;Cold;393.15;483.15;35;2.5;0
+9;Process A;None;Cold;313.15;403.15;35;2.5;0
+10;Process A;None;Cold;333.15;393.15;30;2.5;0
+11;Process A;None;Cold;323.15;423.15;10;3;0
+12;Process A;None;Cold;313.15;403.15;20;1;0
+13;Process A;None;Cold;393.15;433.15;35;1;0
+14;Process A;None;Cold;313.15;363.15;35;1.75;0
+15;Process A;None;Cold;323.15;363.15;30;1.5;0
+16;Process A;None;Cold;323.15;423.15;30;2;0
+17;Process A;None;Cold;303.15;423.15;50;2;0
+1;Utility;HPS;Hot Utility;598.15;598.15;0;1;70
+1;Utility;CW;Cold Utility;298.15;313.15;0;2;10
+;;;;;;;;
+Number;Subsystem;Description;Designation;HX unit cost;HX area coefficient;HX area exponent;;
+;;;;unit_cost;_coeff;A_exp;;
+;;;;$/y;$/m2-y;;;
+1;Process A;Process-process HX;Exchange;8000;800;0.8;;
+1;Utility;Process-heater HX;Heating;8000;800;0.8;;
+1;Utility;Process-cooler HX;Cooling;8000;800;0.8;;
