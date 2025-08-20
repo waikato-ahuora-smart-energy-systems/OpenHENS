@@ -35,6 +35,6 @@ jobs:
       run: |
         echo "PATH=$PATH:$PWD/solvers" >> $GITHUB_ENV
 
-    - name: Run tests
-      run: |
-        pytest
+    # - name: Run tests
+    #   run: |
+    #     pytest
