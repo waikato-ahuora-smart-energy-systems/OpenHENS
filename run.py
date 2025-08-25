@@ -33,7 +33,7 @@ if __name__ == '__main__':
     i = 1
     for soln in model._best_solns:
         plt.title(f"{i} Best Solution", y=0.95)
-        soln.get_grid_diagram() 
+        soln.get_grid_diagram(draw_stages=False) 
         print(f"{i} Best Solution TAC: {soln.case.TAC} Time: {soln.case.solve_time:.2f} seconds")
         i += 1
         

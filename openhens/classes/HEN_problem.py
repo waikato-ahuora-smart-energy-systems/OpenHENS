@@ -199,7 +199,7 @@ class HeatExchangerNetworkProblem:
                         logger.warning(f"Match removed:  stream {i}->{j} stage {k},, duty {self.parent.case.Q_r[i][j][k][0]} -> {self.case.Q_r[i][j][k][0]}")
         
 
-    def get_grid_diagram(self) -> Grid_Diagram:
+    def get_grid_diagram(self, draw_stages=False) -> Grid_Diagram:
         """
         Plots grid diagram
 
@@ -208,7 +208,7 @@ class HeatExchangerNetworkProblem:
         # Extact desired case from case list
         if self.case.mSuccess == 1:
             non_iso = True if self.case.non_isothermal_model else False # defines whether to plot branch (non-isothermal) or stage (isothermal) temperatures
-            grid = Grid_Diagram(network=self.case, non_iso=non_iso, draw_stages=True, draw_HP=False)
+            grid = Grid_Diagram(network=self.case, non_iso=non_iso, draw_stages=draw_stages)
         
         return grid # returns the grid diagram object
     

@@ -16,7 +16,7 @@ class Grid_Diagram():
         def __init__(self, network, non_iso, draw_stages=False, draw_HP=False, comparison_network=None):
             """Class constructor"""
             self.network = network
-            self.draw_HP = draw_HP
+            self.draw_HP = draw_HP # NOTE: Synthesising heat pumps is within SynHEAT is in devolopment and will be released as a future update
                         
             # Manually defined spacing values
             self.stream_spacing = 2 # y-axis gap between streams should be scaled based upon problem size
