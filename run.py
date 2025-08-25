@@ -8,7 +8,7 @@ matplotlib.use('TkAgg')
 
 if __name__ == '__main__':
   
-    problem_name = 'Four-stream-Yee-and-Grossmann-1990-1'
+    problem_name = 'Nine-stream-Linnhoff-and-Ahmad-1999-1'
     options = { 'input_folder': f'examples/cases/{problem_name}.csv', # File path to the stream data CSV
                 'output_folder': f'examples/results/{problem_name}', # File path to results folder where outputs will be saved
                 'min_dT_list': [2, 4, 6, 8, 10, 12, 14, 16, 18, 20,], # List of Δ𝑇min values that define distinct PDM instances
@@ -30,9 +30,12 @@ if __name__ == '__main__':
         model.display_best_from_run()
         model.display_n_best_from_file()  
     
+    i = 1
     for soln in model._best_solns:
+        plt.title(f"{i} Best Solution", y=0.95)
         soln.get_grid_diagram() 
-        print(f"Case {soln.name} TAC: {soln.case.TAC} Time: {soln.case.solve_time:.2f} seconds")
+        print(f"{i} Best Solution TAC: {soln.case.TAC} Time: {soln.case.solve_time:.2f} seconds")
+        i += 1
         
     plt.show()
  

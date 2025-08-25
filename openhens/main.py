@@ -143,8 +143,6 @@ class OpenHENS:
         best = pickle.load(open(file_to_open, 'rb'))
         logger.warning(f"{n_best} best from file {best.name} {best.case.TAC}")
         best.get_grid_diagram()
-        plt.show()
-        
 
     def _get_optimal_network(
             self, 

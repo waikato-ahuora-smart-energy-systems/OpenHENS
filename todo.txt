@@ -16,5 +16,6 @@ Features
 - [ ] Add paramater matrix to force a utility match e.g trim heater/cooler
 - [ ] Pytests on benchmark problems at known feasible solution
 - [ ] Multiple utility levels
-- [ ] Video guide of using OpenHENS and how to select dTmin, stages and 
+- [ ] Video guide of using OpenHENS and how to select dTmin, stages and dQmin
+- [ ] Better display of solutions from file and current run
 
