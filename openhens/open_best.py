@@ -1,46 +1,34 @@
-'''
-__author__ = 'Keegan Hall and Tim Walmsley'
-__credits__ = ['tbc']
+"""Open the best solution from durable study artifacts."""
 
-Open n-best pkl files from results folder for viewing
-'''
+from __future__ import annotations
 
-import pickle
-import matplotlib.pyplot as plt
+import argparse
 from pathlib import Path
 import sys
 
-# Add OpenHENS project root to sys.path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from openhens.classes import Grid_Diagram
-
-parent_folder = Path(__file__).parent.parent # location of folder that contans the entire package
- 
-# Open best soln
-n_index = 1 # n best soln to return
-problem_name = 'Nine-stream-Linnhoff-and-Ahmad-1999-1'
-file_to_open = parent_folder / 'examples' / 'results'  / problem_name / '{} best.pkl'.format(n_index)  
-best = pickle.load(open(file_to_open,'rb'))
-print('{} best from file'.format(n_index), best.name, best.case.TAC)
-best.case.verify()
-
-if best.parent.framework == 'ESM': # best soln is ESM
-    PDM = best.parent.parent  
-    TDM = best.parent  
-    PDM_grid = Grid_Diagram(network=PDM.case, non_iso=False, draw_stages=False, comparison_network=best.case) 
-    TDM_grid = Grid_Diagram(network=TDM.case, non_iso=False, draw_stages=False, comparison_network=best.case)
-elif best.parent.framework == 'TDM':# best soln is TDM (very unlikely)
-    PDM = best.parent
-else: # best soln is PDM (shouldnt occur)
-    pass
- 
-
-best_grid = Grid_Diagram(network=best.case, non_iso=True, draw_stages=False, comparison_network=None)  
-plt.title(f"{n_index} Best Solution", y=0.95)
-best.case.output_to_cmd_line()
-plt.show()
+from openhens.artifacts import load_study_outcome
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Print the lowest-TAC solution from OpenHENS artifacts.")
+    parser.add_argument("run_folder", type=Path, help="Folder containing manifest.json for one OpenHENS run.")
+    args = parser.parse_args()
 
+    outcome = load_study_outcome(args.run_folder)
+    best = outcome.solutions.best_by_total_annual_cost()
+    if best is None:
+        print("No solution with total annual cost was found.")
+        return
+
+    print(f"Best solution: {best.name}")
+    print(f"Task ID: {best.task_id}")
+    print(f"Method: {best.method}")
+    print(f"Total annual cost: {best.total_annual_cost}")
+    print(f"Stages: {best.stages}")
+
+
+if __name__ == "__main__":
+    main()

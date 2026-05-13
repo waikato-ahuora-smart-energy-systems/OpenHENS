@@ -6,12 +6,10 @@ Simultaneous synthesis, design and optimization followed by network evolution
 for process heat exchanger networks given input data
 '''
 
-from typing import Any, Literal
-import os
+from .artifacts import write_study_artifacts
+from .domain import CaseStudy, DesignSpace, MethodSequence, NetworkSolution, SolveSetup, StudyOutcome, StudyOutputs, SynthesisStudy
 from .classes import HeatExchangerNetworkProblem
-from .utils import run_parallel_solutions, save_pickle, get_n_best_by_TAC, save_esm_metrics, save_run_summary, plot_metric_relationships, open_pickle
-from timeit import default_timer as timer
-import pickle
+from .workflow import run_synthesis_workflow
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -53,14 +51,47 @@ class OpenHENS:
     - see OpenHensOptions for available options
     """
 
-    def __init__(self, **options) -> None:
+    def __init__(self, study: SynthesisStudy | CaseStudy | None = None, **options) -> None:
         """
-        - problem_file (str): path to csv problem file
-        - options (dict): options for solving the problem (see OpenHensOptions)
+        - study: public SynthesisStudy entry object.
+        - options: legacy keyword options for solving the problem (see OpenHensOptions).
         """
-        self.options = OpenHensOptions(**options)
+        if study is not None and options:
+            raise ValueError("Pass either a SynthesisStudy or legacy OpenHENS options, not both.")
+
+        self.study = self._coerce_study(study)
+        if self.study is None:
+            self.options = OpenHensOptions(**options)
+        else:
+            self.options = self._options_from_study(self.study)
     
         self.set_log_level(self.options.log_level)
+
+    def _coerce_study(self, study: SynthesisStudy | CaseStudy | None) -> SynthesisStudy | None:
+        if study is None:
+            return None
+        if isinstance(study, SynthesisStudy):
+            return study
+        if isinstance(study, CaseStudy):
+            return SynthesisStudy(case=study)
+        raise TypeError("study must be a SynthesisStudy, CaseStudy, or None")
+
+    def _options_from_study(self, study: SynthesisStudy) -> OpenHensOptions:
+        stage_selection = study.design_space.stage_selection
+        if stage_selection != "automated":
+            stage_selection = list(stage_selection)
+
+        return OpenHensOptions(
+            input_folder=study.case.source,
+            output_folder=study.outputs.folder,
+            min_dT_list=list(study.design_space.approach_temperatures),
+            min_dqda_list=list(study.design_space.derivative_thresholds),
+            stage_selection=stage_selection,
+            tolerance=study.solving.tolerance,
+            max_parallel=study.solving.max_parallel,
+            best_solns_to_save=study.outputs.best_solutions_to_save,
+            log_level=study.solving.log_level,
+        )
       
     def set_log_level(self, level: int) -> None:
         logger.setLevel(level)
@@ -72,10 +103,15 @@ class OpenHENS:
             for h in logger.handlers:
                 h.setLevel(level)  # <- override even fallback INFO level
         
-    def solve(self) -> None:
+    def solve(self) -> StudyOutcome:
         """
         Solve the problem
         """
+        if self.study is not None and self.study.methods != MethodSequence.standard_pdm_tdm_esm():
+            raise NotImplementedError(
+                "Custom method sequences and solver choices will be wired into solve in a later refactor step."
+            )
+
         self._problem_file = Path(self.options.input_folder)
         self._output_folder = Path(self.options.output_folder)
         self._output_folder.mkdir(parents=True, exist_ok=True)
@@ -88,42 +124,30 @@ class OpenHENS:
             stage_selection = self.options.stage_selection
         )
 
-        # Save top n-best solutions to pickle
-        # return n best where index 0 is best, index n is n best
-        self._best_solns = get_n_best_by_TAC(self.solutions, self.options.best_solns_to_save)
-        i=1 # start ranking as 1=best 2=next best
-        for P_i in self._best_solns: # iterate across each best soln
-            file_to_save = self._output_folder / '{} best.pkl'.format(i)
-            # First check for existing file and only save if its better than the existing 
-            if file_to_save.is_file() == True: # file exists
-                n_best = pickle.load(open(file_to_save,'rb')) # load existing soln
-                if P_i.case.TAC < n_best.case.TAC: # new soln is better so replace file
-                    with open(file_to_save, 'wb') as model_file:
-                        pickle.dump(P_i, model_file)
-                else: # keep existing file
-                    pass
-            elif file_to_save.is_file() == False: # create new file
-                with open(file_to_save, 'wb') as model_file:
-                    pickle.dump(P_i, model_file)
-            i=i+1 # add to i for next best
+        self._best_solns = self._best_legacy_problems_by_TAC(self.solutions, self.options.best_solns_to_save)
+        self._best_network_solutions = self._best_network_solutions_by_TAC(
+            self.network_solutions,
+            self.options.best_solns_to_save,
+        )
+        return self.study_outcome
     
 
     def display_run_metrics(self) -> None:
-        # Plot results from the current run
-        if len(self.solutions) == 0:
-            logger.warning("No solutions found, skipping display run metrics")
+        if not hasattr(self, "study_outcome") or not hasattr(self, "_run_folder"):
+            logger.warning("No study artifacts are loaded; run solve() before displaying run metrics")
             return
-        
-        # Save and retrieve ESM metrics
-        ESM_metrics = save_esm_metrics(P_list=self.solutions, path=self._output_folder)
-      
-        # Generate all standard plots
-        try:
-            plot_metric_relationships(metrics=ESM_metrics, path=self._output_folder)
-        except Exception as e:
-            logger.error(f"Plotting failed: {e}")
-        
-        # Save run summary
+
+        manifest = self.study_outcome.manifest
+        metrics_path = self._run_folder / manifest.solution_metrics_path
+        summary_path = self._run_folder / manifest.run_summary_path
+        if metrics_path.exists():
+            logger.warning(f"Solution metrics: {metrics_path}")
+        else:
+            logger.warning(f"Solution metrics artifact missing: {metrics_path}")
+        if summary_path.exists():
+            logger.warning(f"Run summary: {summary_path}")
+        else:
+            logger.warning(f"Run summary artifact missing: {summary_path}")
         
     def display_best_from_run(self) -> None:
         if len(self._best_solns) == 0:
@@ -135,14 +159,22 @@ class OpenHENS:
 
 
     def display_n_best_from_file(self, n_best: int = 1) -> None:
-        # Open best overall soln
-        file_to_open = self._output_folder / '{} best.pkl'.format(n_best)
-        if not os.path.exists(file_to_open):
-            logger.warning(f"No overall best file found: `{file_to_open}`")
+        if not hasattr(self, "study_outcome"):
+            logger.warning("No study outcome is loaded; run solve() or load artifacts first")
             return
-        best = pickle.load(open(file_to_open, 'rb'))
-        logger.warning(f"{n_best} best from file {best.name} {best.case.TAC}")
-        best.get_grid_diagram()
+        ranked = sorted(
+            (
+                solution
+                for solution in self.study_outcome.solutions.solutions
+                if solution.total_annual_cost is not None
+            ),
+            key=lambda solution: solution.total_annual_cost,
+        )
+        if len(ranked) < n_best:
+            logger.warning(f"No artifact solution ranked {n_best}")
+            return
+        best = ranked[n_best - 1]
+        logger.warning(f"{n_best} best from artifacts {best.name} {best.total_annual_cost}")
 
     def _get_optimal_network(
             self, 
@@ -162,104 +194,75 @@ class OpenHENS:
         - min_dqda_list: list containing the specified min dQ/dA that the problem will be with
         - min_dT_list: minimum dT for all problem objects created
         """
-        start_tiem = timer()
-        
-        # Pinch Decomposition Method (PDM)
-        pdm_problems: list[HeatExchangerNetworkProblem] = []
-        for min_dT in min_dT_list:
-                problem = HeatExchangerNetworkProblem(
-                    name='P-+''--PDM-'+str(min_dT),
-                    framework='PDM',
-                    solver= 'couenne',
-                    dTmin=min_dT, 
-                    import_file=problem_file, 
-                    z_restriction=[None,None,None], 
-                    minimisation_goal='hot utility', 
-                    non_isothermal_model=False,
-                    integers=True, 
-                    tol=self.options.tolerance,
-                    parent=None,
-                    stage_selection=stage_selection,
-                )
-                pdm_problems.append(problem)
-        
-        pdm_solutions = run_parallel_solutions(
-            problems=pdm_problems,
-            max_parallel=self.options.max_parallel,
-            print_output=False,
-            evolution=False
+        study = self.study or self._study_from_legacy_options(
+            problem_file=problem_file,
+            min_dqda_list=min_dqda_list,
+            min_dT_list=min_dT_list,
+            stage_selection=stage_selection,
         )
-        logger.warning(f"PDM Completed: {len(pdm_solutions)} solutions found")
-       
-        # Thermal Derivative Method (TDM)
-        tdm_problems: list[HeatExchangerNetworkProblem] = []
-        for pdm in pdm_solutions:
-            for min_dqda in min_dqda_list:
-                args = pdm.args.copy()
-                args.update({
-                    "name": 'P-S'+str(pdm.case.stages)+'--TDM-'+str(min_dqda),
-                    "framework": 'TDM',
-                    "solver": 'couenne',
-                    "dTmin": 0.1,
-                    "import_file": problem_file,
-                    "non_isothermal_model": False,
-                    "integers": True,
-                    "min_dqda": min_dqda,
-                    "minimisation_goal": 'hot utility',
-                    "z_restriction": [pdm.case.Q_r, None, None]
-                })
-                tdm_problems.append(HeatExchangerNetworkProblem(**args, parent=pdm))
-        
-        tdm_solutions = run_parallel_solutions(
-            problems=tdm_problems,
-            max_parallel=self.options.max_parallel,
-            print_output=False,
-            evolution=False
+        workflow_result = run_synthesis_workflow(study, print_output=False)
+        self.workflow_result = workflow_result
+        self.task_outcomes = workflow_result.outcomes
+        self.network_solutions = [
+            outcome.solution for outcome in workflow_result.outcomes if outcome.success and outcome.solution is not None
+        ]
+        combined_solutions = workflow_result.successful_problems
+        self.study_outcome = write_study_artifacts(
+            study,
+            workflow_result.outcomes,
+            total_run_time_seconds=workflow_result.total_run_time,
+            attempted_solver_jobs=workflow_result.attempted_solver_jobs,
+            outputs=study.outputs,
         )
-
-        tdm_ordered_solutions = get_n_best_by_TAC(tdm_solutions, 20)
-        logger.warning(f"TDM Completed: {len(tdm_solutions)} solutions found")
-       
-        # Evolutionary Synthesis Method (ESM)
-        esm_problems: list[HeatExchangerNetworkProblem] = []
-        for tdm in tdm_solutions:
-            args = tdm.args.copy()
-            args.update({
-                "name": 'P-S'+str(tdm.case.stages)+'-Synheat-Iso-NLP',
-                "framework": 'ESM',
-                "solver": 'ipopt-pyomo',
-                "non_isothermal_model": True,
-                "integers": False,
-                "minimisation_goal": 'variable total cost',
-                "z_restriction": [tdm.case.Q_r, None, None]
-            })
-            esm_problems.append(HeatExchangerNetworkProblem(**args, parent=tdm))
-        
-        esm_solutions = run_parallel_solutions(
-            problems=esm_problems,
-            max_parallel=self.options.max_parallel,
-            print_output=False,
-            evolution=True
-        )
-        logger.warning(f"ESM Completed: {len(esm_solutions)} solutions found")
-        end_time = timer()
-        total_run_time = end_time - start_tiem
-        logger.warning(f"Total run time: {total_run_time}s")
-        logger.debug(f"PDM: {pdm_solutions}")
-        logger.debug(f"TDM: {tdm_solutions}")
-        logger.debug(f"ESM: {esm_solutions}")
-
-        combined_solutions = pdm_solutions + tdm_solutions + esm_solutions
+        self._run_folder = study.outputs.folder / self.study_outcome.manifest.run_id
 
         if len(combined_solutions) == 0:
             logger.warning("No solutions found")
             return []
 
-        save_run_summary(
-            path=self._output_folder,
-            P_list=combined_solutions,
-            attempted=len(min_dT_list) + len(min_dqda_list)*len(pdm_solutions) + len(tdm_solutions)*11,
-            total_run_time=total_run_time
-        )
-
         return combined_solutions
+
+    def _best_network_solutions_by_TAC(
+        self,
+        solutions: list[NetworkSolution],
+        n_best: int,
+    ) -> list[NetworkSolution]:
+        ranked = sorted(
+            (solution for solution in solutions if solution.total_annual_cost is not None),
+            key=lambda solution: solution.total_annual_cost,
+        )
+        return ranked[:n_best] if n_best > 0 else ranked
+
+    def _best_legacy_problems_by_TAC(
+        self,
+        solutions: list[HeatExchangerNetworkProblem],
+        n_best: int,
+    ) -> list[HeatExchangerNetworkProblem]:
+        ranked = sorted(solutions, key=lambda solution: solution.case.TAC)
+        return ranked[:n_best] if n_best > 0 else ranked
+
+    def _study_from_legacy_options(
+        self,
+        problem_file,
+        min_dqda_list,
+        min_dT_list,
+        stage_selection,
+    ) -> SynthesisStudy:
+        if stage_selection != "automated":
+            stage_selection = tuple(stage_selection)
+
+        return SynthesisStudy(
+            case=CaseStudy(source=Path(problem_file)),
+            design_space=DesignSpace(
+                approach_temperatures=tuple(min_dT_list),
+                derivative_thresholds=tuple(min_dqda_list),
+                stage_selection=stage_selection,
+            ),
+            methods=MethodSequence.standard_pdm_tdm_esm(),
+            solving=SolveSetup.local(
+                tolerance=self.options.tolerance,
+                max_parallel=self.options.max_parallel,
+                log_level=self.options.log_level,
+            ),
+            outputs=StudyOutputs(folder=Path(self.options.output_folder)),
+        )

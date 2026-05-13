@@ -43,12 +43,12 @@ def save_run_summary(P_list, attempted, total_run_time, path: Path) -> None:
     df = _collect_run_summary(P_list, attempted, total_run_time)
     _append_to_excel(path / 'Run Metrics.xlsx', df)
 
-def plot_metric_relationships(metrics: pd.DataFrame, path: Path) -> None:   
-    _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='ESM TAC', filename="dqda_dTmin_TAC", path=path)
-    _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='Solve Time', color='ESM TAC', colorbar_title='TAC ($/y)', filename="dqda_dTmin_time_TAC", path=path)
+def plot_metric_relationships(metrics: pd.DataFrame, path: Path, show: bool = True) -> None:
+    _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='ESM TAC', filename="dqda_dTmin_TAC", path=path, show=show)
+    _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='Solve Time', color='ESM TAC', colorbar_title='TAC ($/y)', filename="dqda_dTmin_time_TAC", path=path, show=show)
     if len(metrics['Stages'].unique()) > 1: # only plot if there are multiple stages
-        _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='Stages', color='Solve Time', colorbar_title='Solve Time (s)', filename="dqda_dTmin_stages_Time", path=path)
-        _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='Stages', color='ESM TAC', colorbar_title='TAC ($/y)', filename="dqda_dTmin_stages_TAC", path=path)
+        _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='Stages', color='Solve Time', colorbar_title='Solve Time (s)', filename="dqda_dTmin_stages_Time", path=path, show=show)
+        _plot_3d_scatter(metrics, x='min_dQ', y='dTmin', z='Stages', color='ESM TAC', colorbar_title='TAC ($/y)', filename="dqda_dTmin_stages_TAC", path=path, show=show)
 
 def _append_to_excel(file: Path, data: pd.DataFrame) -> None:
     if file.exists():
@@ -111,10 +111,11 @@ def _collect_run_summary(P_list, attempted, total_run_time):
     }
     return pd.DataFrame(summary) 
 
-def _plot_3d_scatter(metrics, x, y, z, color=None, colorbar_title=None, filename="3d_plot", path=Path(".")):
+def _plot_3d_scatter(metrics, x, y, z, color=None, colorbar_title=None, filename="3d_plot", path=Path("."), show: bool = True):
     ''' Create a 3D interactive scatter plot using Plotly.'''
     series = metrics[color] if color else metrics[z]
-    norm = (series - series.min()) / (series.max() - series.min())
+    span = series.max() - series.min()
+    norm = (series - series.min()) / span if span else 0
     metrics['marker_size'] = round(MARKER_MIN_SIZE + (1 - norm) * (MARKER_MAX_SIZE - MARKER_MIN_SIZE), 2)
 
     fig = px.scatter_3d(
@@ -134,7 +135,7 @@ def _plot_3d_scatter(metrics, x, y, z, color=None, colorbar_title=None, filename
 
     fig.update_traces(marker=dict(size=metrics['marker_size'], line=dict(width=1, color='black')), hovertemplate=hover_text)
     _apply_3d_layout(fig, x, y, z, colorbar_title)
-    _save_plot(fig, path, filename)
+    _save_plot(fig, path, filename, show=show)
  
 def _apply_3d_layout(fig, x, y, z, colorbar_title=None):
     x_title = METRIC_LABELS.get(x, x)
@@ -163,13 +164,12 @@ def _apply_3d_layout(fig, x, y, z, colorbar_title=None):
     fig.update_layout(**layout)
  
 def _save_plot(fig, path: Path, name: str, save: bool = True, show: bool = True) -> None:
-    pio.renderers.default = 'browser'  # Opens in your browser
     if save:
         fig.write_html(path / f"{name}.html")
         pio.write_image(fig, path / f"{name}.png", width=FIG_SIZE[0], height=FIG_SIZE[1], scale=FIG_SIZE[2], engine="kaleido") 
     if show:
+        pio.renderers.default = 'browser'  # Opens in your browser
         fig.show()
     
 
     
-
