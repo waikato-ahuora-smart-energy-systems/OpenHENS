@@ -1,13 +1,11 @@
 from typing import Literal
 from gekko import GEKKO, gk_variable
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from abc import ABC, abstractmethod
-from pyomo.environ import SolverFactory
-import logging
 from ..logger import openhens_log as logger
-import time
+from ..domain import CaseStudy
+from ..solvers import configure_gekko_solver, solve_gekko_model
 
 class GenericHENModel(ABC):
     def __init__(
@@ -39,6 +37,7 @@ class GenericHENModel(ABC):
         self.solver_options = solver_options
         
         self.solve_time = None
+        self.solver_run = None
 
         self.setup_model()
         self.setup()
@@ -47,36 +46,9 @@ class GenericHENModel(ABC):
     def setup_model(self) -> None:
         self.m = GEKKO(remote=False)
         self.mSuccess: int = 0
-        
-        # Set up solver options
-        if self.solver in ['couenne', 'ipopt-pyomo']:
-            self.m.options.SOLVER_EXTENSION = "pyomo"
-        elif self.solver in ['ipopt-GEKKO', 'apopt']:
-            self.m.options.SOLVER_EXTENSION = 0
-        
-        self.m.options.SOLVER = self.solver.split('-')[0]
-       
-        if self.solver in ['ipopt-GEKKO', ]:
-            self.m.solver_options = [
-                'tol 1e-3',                            # Overall optimality tolerance
-                'acceptable_tol 1e-2',                # IPOPT will stop here if no better solution is found
-                'constr_viol_tol 1e-2',               # Allow constraints to be violated up to this much
-                'acceptable_constr_viol_tol 1e-1',    # Allow larger violation temporarily
-                'compl_inf_tol 1e-2',                 # Tolerance for complementary constraints (e.g. bounds)
-                'max_iter 1000',                      # Increase iterations if needed
-                'print_level 5',                      # Optional: more verbose IPOPT output
-            ]
-        if self.solver in ['apopt', ]:    
-            self.m.options.MAX_ITER = 1000
-            self.m.options.RTOL = 1e-2
-            self.m.options.OTOL = 1e-2
-            
-        # check solver is available
+
         try:
-            if self.m.options.SOLVER_EXTENSION == "pyomo":
-                SolverFactory(self.m.options.SOLVER).available()
-            else:
-                pass
+            self.solver_run = configure_gekko_solver(self.m, self.solver)
         except:
             raise Exception(f"{self.solver} solver not found. Please check the solver is installed and the path is correct.")
     
@@ -142,71 +114,9 @@ class GenericHENModel(ABC):
         self.A_exp = np.array([], dtype=float)          #area cost exponent
     
 
-    def get_model_parameters_from_file(self):   
-        try:               
-            df = pd.read_csv(self.import_file, sep=None, engine='python') # save csv to pandas dataframe using the python engine to detect what the file seperator is
-            df_a = df.to_numpy(na_value=None)  # Convert to array where each row is a nested array
-            
-            stream_designation = 3  # Column of the stream designation
-
-            for row in df_a:  # Iterate across each variable
-                if row[stream_designation] in ["Hot", "hot"]:  # Append variables to hot stream arrays
-                    self.hot_names = np.append(self.hot_names, str(row[2]))
-                    self.T_h_in = np.append(self.T_h_in, float(row[4]))
-                    self.T_h_out = np.append(self.T_h_out, float(row[5]))
-                    self.f_h = np.append(self.f_h, float(row[6]))
-                    self.htc_h = np.append(self.htc_h, float(row[7]))
-                    self.h_cost = np.append(self.h_cost, float(row[8]))
-                    if len(row) == 10: # if Tcont is given in data import it 
-                        self.T_h_cont = np.append(self.T_h_cont, float(row[9]))
-                    else:
-                        self.T_h_cont = np.append(self.T_h_cont, self.dTmin/2)
-                    
-
-                elif row[stream_designation] in ["Cold", "cold"]:  # Append variables to hot stream arrays
-                    self.cold_names = np.append(self.cold_names, str(row[2]))
-                    self.T_c_in = np.append(self.T_c_in, float(row[4]))
-                    self.T_c_out = np.append(self.T_c_out, float(row[5]))
-                    self.f_c = np.append(self.f_c, float(row[6]))
-                    self.htc_c = np.append(self.htc_c, float(row[7]))
-                    self.c_cost = np.append(self.c_cost, float(row[8]))
-                    if len(row) == 10:
-                        self.T_c_cont = np.append(self.T_c_cont, float(row[9]))
-                    else: 
-                        self.T_c_cont = np.append(self.T_c_cont, self.dTmin/2)
-
-                elif row[stream_designation] in ["Hot Utility", "Hot utility", "hot utility"]:  # Append variables to hot utility stream arrays
-                    self.T_hu_in = np.append(self.T_hu_in, float(row[4]))
-                    self.T_hu_out = np.append(self.T_hu_out, float(row[5]))
-                    self.htc_hu = np.append(self.htc_hu, float(row[7]))
-                    self.hu_cost = np.append(self.hu_cost, float(row[8]))
-
-                elif row[stream_designation] in ["Cold Utility", "Cold utility", "cold utility"]: # Append variables to cold utility stream arrays
-                    self.T_cu_in = np.append(self.T_cu_in, float(row[4]))
-                    self.T_cu_out = np.append(self.T_cu_out, float(row[5]))
-                    self.htc_cu = np.append(self.htc_cu, float(row[7]))
-                    self.cu_cost = np.append(self.cu_cost, float(row[8]))
-
-                elif row[stream_designation] in ["Exchange", "exchange"]: # Append variables to process HX arrays
-                    self.unit_cost = np.append(self.unit_cost, float(row[4]))
-                    self.A_coeff = np.append(self.A_coeff, float(row[5]))
-                    self.A_exp = np.append(self.A_exp, float(row[6]))
-
-                elif row[stream_designation] in ["Heating", "heating"]: # Append variables to heating HX arrays
-                    self.hu_unit_cost = np.append(self.hu_unit_cost, float(row[4]))
-                    self.hu_coeff = np.append(self.hu_coeff, float(row[5]))
-                    self.hu_exp = np.append(self.hu_exp, float(row[6]))
-
-                elif row[stream_designation] in ["Cooling", "cooling"]: # Append variables to cooling HX arrays
-                    self.cu_unit_cost = np.append(self.cu_unit_cost, float(row[4]))
-                    self.cu_coeff = np.append(self.cu_coeff, float(row[5]))
-                    self.cu_exp = np.append(self.cu_exp, float(row[6]))
-                
-                else:  # blank rows
-                    pass
-                
-        except:
-            logger.error("Case file not found in directory.")  # TODO: need to throw an error either here or before
+    def get_model_parameters_from_file(self):
+        case_study = CaseStudy.from_csv(self.import_file)
+        case_study.apply_to_legacy_model(self, self.dTmin)
 
 
     def set_match_restrictions(self, restrictions):
@@ -257,26 +167,23 @@ class GenericHENModel(ABC):
         """
         Solve the model
         """
-        try:
-            start = time.time()
-            self.m.solve(disp=False, debug=0) #
-            self.solve_time = time.time() - start
+        self.solver_run = solve_gekko_model(self.m, solver_name=self.solver, disp=False, debug=0)
+        self.solve_time = self.solver_run.solve_time
             
-            if self.m.options.SOLVESTATUS == 1:  
-                if self.m.options.objfcnval + self.tol < 0: # double check that we have a positive objective function value
-                    self.mSuccess = 0
-                    logger.error(f"[Failed] [model: {self.name}] [path: {self.m._path}]")
-                else:
-                    self.mSuccess = self.m.options.SOLVESTATUS
-                    logger.info(f"[Success] [model: {self.name}] [path: {self.m._path}]")
-            else:
-                self.mSuccess = self.m.options.SOLVESTATUS
-                logger.error(f"[Failed] [model: {self.name}] [path: {self.m._path}] [status: {self.m.options.SOLVESTATUS}]")
-            
-                    
-        except Exception as e:
+        if self.solver_run.failure_reason is not None:
             self.mSuccess = 0
             logger.error(f"[Failed] [model: {self.name}] [path: {self.m._path}]")
+        elif self.m.options.SOLVESTATUS == 1:  
+            if self.m.options.objfcnval + self.tol < 0: # double check that we have a positive objective function value
+                self.mSuccess = 0
+                self.solver_run = self.solver_run.model_copy(update={"failure_reason": "negative objective value"})
+                logger.error(f"[Failed] [model: {self.name}] [path: {self.m._path}]")
+            else:
+                self.mSuccess = self.m.options.SOLVESTATUS
+                logger.info(f"[Success] [model: {self.name}] [path: {self.m._path}]")
+        else:
+            self.mSuccess = self.m.options.SOLVESTATUS
+            logger.error(f"[Failed] [model: {self.name}] [path: {self.m._path}] [status: {self.m.options.SOLVESTATUS}]")
 
         if self.mSuccess:
             self.get_post_process()
@@ -440,7 +347,3 @@ class GenericHENModel(ABC):
                             f"Tc in {self.T_c[j][k+1][0] - 273.15:.3f} Tc out {self.T_c[j][k][0] - 273.15:.3f} "
                             f"theta 1 {self.theta_1[i][j][k][0]:.3f} theta 2 {self.theta_2[i][j][k][0]:.3f} "
                             f"theta 1 calc {self.T_h[i][k][0] - self.T_c[j][k][0]:.3f} theta 2 calc {self.T_h[i][k+1][0] - self.T_c[j][k+1][0]:.3f}")
-
-    
-        
-                
