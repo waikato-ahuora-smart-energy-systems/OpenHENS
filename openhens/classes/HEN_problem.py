@@ -27,6 +27,7 @@ class HeatExchangerNetworkProblem:
             parent: "HeatExchangerNetworkProblem" = None,
             tol: float = 1e-3,
             stage_selection: str | list[str] = "automated", 
+            stages: int | None = None,
         ):
         """
         Constructs arguements dictionary that contains the details for creating the model
@@ -47,6 +48,7 @@ class HeatExchangerNetworkProblem:
         - parent: solved HEN_problem instance object containing values for initialisation of current object
         - tol: tolerance for GEKKO solver
         - stage_selection: specifies the stage selection criteria for the PDM. If 'automated', stages are automatically selected based on the number of hot and cold streams in each submodel. If a list, stages are set to the specified values.
+        - stages: explicit stage count for stage-wise TDM/ESM tasks when no parent problem object is available.
         """
         self.name = name
         self.framework = framework
@@ -61,6 +63,7 @@ class HeatExchangerNetworkProblem:
         self.parent = parent
         self.tol = tol
         self.stage_selection = stage_selection
+        self.stages = stages
 
 
     def load_model(self) -> None:
@@ -111,7 +114,13 @@ class HeatExchangerNetworkProblem:
         self.below = PinchDecompModel(**below_args)
     
     def _build_stage_wise(self) -> None:
-        self.case = StageWiseModel(**self.args, stages=self.parent.case.stages) # single stage-wise model
+        stages = self.stages
+        if stages is None and self.parent is not None:
+            stages = self.parent.case.stages
+        if stages is None:
+            raise ValueError("Stage-wise models require an explicit stage count or a parent solution.")
+
+        self.case = StageWiseModel(**self.args, stages=stages) # single stage-wise model
         if self.parent is not None:
             self.case.set_initial_values_for_variables(self.parent.case)
     
@@ -188,6 +197,7 @@ class HeatExchangerNetworkProblem:
             return self.case
         
         except ValueError as e:
+            self.solution_failure_reason = str(e)
             logger.error(f'StageWiseModel failed to load or solve. Error: {e}')
             return None
 
