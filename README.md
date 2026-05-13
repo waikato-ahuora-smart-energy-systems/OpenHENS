@@ -3,18 +3,18 @@
 Open-source, equation-based synthesis and optimisation of heat exchanger networks 
 Models apply the Gekko modelling language (https://github.com/BYU-PRISM/GEKKO) and solve using the open-source APOPT solver (https://apopt.com/) or COIN-OR solvers (https://www.coin-or.org)
 
-The current version is 0.5. The full release will come by March 2026 and will involve 
-- Code refactor for improved useability
-- Pytests
-- User guides & documentation
-- Package through pip
-- Integration into the Ahuora Platform
-- Safety of saving solutions
+The current version is 0.5. Active refactor work is focused on
+- improved usability through a typed public API
+- pytest coverage for fast checks and solver regressions
+- user guides and documentation
+- packaging through pip
+- integration into the Ahuora Platform
+- safer durable result artifacts
 
 
-## 🚀 Installation (via Conda + setup.py)
+## Installation
 
-Follow these steps to install and run OpenHENS using a Conda environment.
+The preferred development install uses `uv`, which reads `pyproject.toml` and creates a managed environment from the lockfile.
 
 ### 1. Clone the Repository
 
@@ -23,38 +23,35 @@ git clone https://github.com/waikato-ahuora-smart-energy-systems/OpenHENS.git
 cd OpenHENS
 ```
 
-### 2. Install Miniconda (if not already installed)
+### 2. Install uv
 
-Download and install **Miniconda** from:  
-https://docs.conda.io/en/latest/miniconda.html
+Install `uv` using the official instructions:
+https://docs.astral.sh/uv/getting-started/installation/
 
-> During setup, check the box to "Add Miniconda to my PATH environment variable" if you want to use it from any terminal.
+### 3. Create the Environment
 
-Once installed, open **Anaconda Prompt** (Windows) or terminal (macOS/Linux). Do not use virtual environments as they dont work with packages outside of Python
+```bash
+uv sync --dev
+```
+
+### 4. Run Fast Tests
+
+```bash
+uv run pytest -m "not solver"
+```
+
+Solver binaries are still installed separately from the Python environment. The
+optional benchmark regressions run the mathematical solvers against the saved
+Four-stream and Nine-stream baselines:
+
+```bash
+uv run pytest -m solver
+```
 
 ---
 
-### 3. Create and Activate a Conda Environment
-
-```bash
-conda create -n openhens-env python=3.12
-conda activate openhens-env
-```
-
-### 4. Install the Package (Using setup.py)
-
-From the project root:
-
-```bash
-pip install -e .
-```
-
-This installs the `OpenHENS` package in **editable mode** and uses `requirements.txt` automatically.
-
----
-
-## 5. Installation of COIN-OR solvers to virtual environment'
-COIN-OR solvers must be installed independently of  `openhens-env`. This can be done by downloading the binaries for the desired solvers
+## 5. Installation of COIN-OR solvers
+COIN-OR solvers must be installed independently of the Python environment. This can be done by downloading the binaries for the desired solvers
 from the COIN-OR website https://www.coin-or.org/download/binary. 
 
 Once the binaries are downloaded, extract and save them to a local file e.g User\Documents\Solvers. The solver .exe path must then be added to the PATH which is done through the 'Environment Variables' program native to Windows systems. 
@@ -63,36 +60,62 @@ More detailed instructions can be found here: https://www.jdhp.org/docs/notebook
 
 
 ## Usage
-Import the OpenHENS class. The user can specify their own parameters as demonstrated in run.py
+Build a study from the public API objects, then pass it to `OpenHENS.solve()`:
 
-```shell
-from openhens import OpenHENS
-options = { 'input_folder': f'examples/cases/Four-stream-Yee-and-Grossmann-1990-1.csv', 
-            'output_folder': f'examples/results/Four-stream-Yee-and-Grossmann-1990-1', 
-            'min_dT_list': [10],
-            'min_dqda_list': [1,2,3],
-            'stage_selection': 'automated'
-            'tolerance': 1e-3, 
-            'max_parallel': 10, 
-            'best_solns_to_save': 10, 
-            'log_level': logging.WARNING, 
-            } 
-            
-model = OpenHens(**options) 
-model.solve()
+```python
+from pathlib import Path
+
+from openhens import (
+    CaseStudy,
+    DesignSpace,
+    MethodSequence,
+    OpenHENS,
+    SolveSetup,
+    StudyOutputs,
+    SynthesisStudy,
+)
+
+study = SynthesisStudy(
+    case=CaseStudy.from_csv("examples/cases/Four-stream-Yee-and-Grossmann-1990-1.csv"),
+    design_space=DesignSpace(
+        approach_temperatures=(2, 4, 6, 8, 10, 12, 14, 16, 18, 20),
+        derivative_thresholds=(0.5, 0.9, 1.3, 1.7, 2.1, 2.4, 2.8, 3.2, 3.6, 4.0),
+    ),
+    methods=MethodSequence.standard_pdm_tdm_esm(),
+    solving=SolveSetup.local(tolerance=1e-3, max_parallel=10),
+    outputs=StudyOutputs(
+        folder=Path("examples/results/Four-stream-Yee-and-Grossmann-1990-1"),
+        run_id="example-run",
+        formats=("json", "csv"),
+        include_excel=False,
+        include_plots=False,
+    ),
+)
+
+outcome = OpenHENS(study).solve()
+print(outcome.manifest.run_id)
 ```
 
-
-## Deleting the Conda Environment
-
-To delete the environment:
+The fast test suite excludes solver regressions by default:
 
 ```bash
-conda deactivate
-conda remove -n openhens-env --all
+uv run pytest -m "not solver"
 ```
 
-This will **not affect** any other Conda environments or your base Python install.
+To reproduce the saved benchmark workbooks, run the optional solver tests:
+
+```bash
+uv run pytest -m solver
+```
+
+
+## Removing the uv Environment
+
+To remove the local virtual environment:
+
+```bash
+rm -rf .venv
+```
 
 ---
 
@@ -108,7 +131,7 @@ https://github.com/waikato-ahuora-smart-energy-systems/OpenHENS
 
 ## 💡 Notes
 
-- If using **VSCode**, make sure to install the **Python extension by Microsoft**, and select the `openhens-env` interpreter.
-- If you modify the codebase, the `-e .` install ensures changes are reflected automatically without re-installing.
+- If using **VSCode**, make sure to install the **Python extension by Microsoft**, and select the `.venv` interpreter created by `uv`.
+- `uv run ...` runs commands inside the managed environment.
 
 ---
