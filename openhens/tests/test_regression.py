@@ -22,9 +22,13 @@ from openhens import (
 
 pytestmark = [pytest.mark.solver, pytest.mark.slow]
 
+# Tight tolerances catch meaningful TAC drift. The max constant is a guardrail:
+# any future relaxation must remain below one percent.
 TAC_REL_TOL = 1e-4
 TAC_ABS_TOL = 1.0
 MAX_REGRESSION_REL_TOL = 1e-2
+# Bucket counts use this separate boundary check to allow one-count changes
+# when solver tie-breaking places a solution exactly on a threshold.
 THRESHOLD_TIE_REL_TOL = 1e-4
 
 assert TAC_REL_TOL < MAX_REGRESSION_REL_TOL
@@ -38,6 +42,8 @@ CASE_IDS = (
 
 @dataclass(frozen=True)
 class BaselineRun:
+    """Workbook baseline slices for one historical case and one recorded run."""
+
     case_id: str
     run_metrics: pd.Series
     solution_metrics: pd.DataFrame
@@ -45,6 +51,7 @@ class BaselineRun:
 
 @pytest.mark.parametrize("case_id", CASE_IDS)
 def test_solver_regression_matches_saved_workbook_baselines(case_id: str, tmp_path: Path) -> None:
+    """Compare fresh JSON/CSV artifacts against the latest workbook baseline."""
     baseline = _load_baseline(case_id)
     outcome = OpenHENS(
         SynthesisStudy(
@@ -112,6 +119,7 @@ def test_solver_regression_matches_saved_workbook_baselines(case_id: str, tmp_pa
 
 
 def _load_baseline(case_id: str) -> BaselineRun:
+    """Load the newest baseline run from the saved workbook exports."""
     baseline_folder = Path("examples/results") / case_id
     run_path = baseline_folder / "Run Metrics.xlsx"
     solution_path = baseline_folder / "Solution Metrics.xlsx"
@@ -124,6 +132,8 @@ def _load_baseline(case_id: str) -> BaselineRun:
         raise AssertionError(f"{case_id}: baseline Solution Metrics.xlsx has no rows")
 
     run_row = _latest_run_row(run_metrics)
+    # Prefer solution rows stamped with the same run date; older workbooks may
+    # contain multiple historical runs in one sheet.
     run_solutions = solution_metrics[solution_metrics["Date"].astype(str) == str(run_row["Date"])]
     if run_solutions.empty:
         run_solutions = _latest_solution_rows(solution_metrics)
@@ -136,6 +146,7 @@ def _load_baseline(case_id: str) -> BaselineRun:
 
 
 def _latest_run_row(run_metrics: pd.DataFrame) -> pd.Series:
+    """Pick the newest run-summary row, falling back to append order if needed."""
     dates = pd.to_datetime(run_metrics["Date"], dayfirst=True, errors="coerce")
     if dates.notna().any():
         return run_metrics.loc[dates.idxmax()]
@@ -143,6 +154,7 @@ def _latest_run_row(run_metrics: pd.DataFrame) -> pd.Series:
 
 
 def _latest_solution_rows(solution_metrics: pd.DataFrame) -> pd.DataFrame:
+    """Return solution rows for the newest dated run in the workbook."""
     dates = pd.to_datetime(solution_metrics["Date"], dayfirst=True, errors="coerce")
     if dates.notna().any():
         latest = dates.max()
@@ -151,6 +163,7 @@ def _latest_solution_rows(solution_metrics: pd.DataFrame) -> pd.DataFrame:
 
 
 def _current_esm_solution_metrics(run_folder: Path) -> pd.DataFrame:
+    """Read the current solution metrics and keep only solved ESM rows."""
     metrics = pd.read_csv(run_folder / "metrics" / "solution_metrics.csv")
     if "Method" in metrics:
         metrics = metrics[metrics["Method"] == "ESM"]
@@ -165,6 +178,7 @@ def _assert_artifacts_are_json_csv_only(
     result_json_paths: list[Path],
     attempted_solver_jobs: int,
 ) -> None:
+    """Confirm the regression fixture only emitted the requested artifact types."""
     _assert_equal_metric("manifest attempted solver jobs", attempted_solver_jobs, manifest["attempted_solver_jobs"])
     _assert_equal_metric("manifest result JSON count", len(result_json_paths), len(manifest["result_paths"]))
     for path in result_json_paths:
@@ -183,6 +197,7 @@ def _assert_run_summary_matches_baseline(
     current_run: pd.Series,
     current_solutions: pd.DataFrame,
 ) -> None:
+    """Validate the aggregate run summary against the workbook baseline."""
     baseline_costs = _finite_metric_values(baseline.solution_metrics, "ESM TAC")
     current_costs = _finite_metric_values(current_solutions, "ESM TAC")
     baseline_best_tac = float(baseline.run_metrics["Best Solution"])
@@ -213,6 +228,7 @@ def _assert_run_summary_matches_baseline(
 
 
 def _assert_solution_metrics_match_baseline(baseline: BaselineRun, current: pd.DataFrame) -> None:
+    """Compare the solved ESM population against the baseline workbook rows."""
     baseline_costs = _finite_metric_values(baseline.solution_metrics, "ESM TAC")
     current_costs = _finite_metric_values(current, "ESM TAC")
     baseline_best_tac = float(baseline.run_metrics["Best Solution"])
@@ -255,6 +271,7 @@ def _assert_solution_metrics_match_baseline(baseline: BaselineRun, current: pd.D
 
 
 def _best_solution_row(metrics: pd.DataFrame, best_tac: float) -> pd.Series:
+    """Return a stable representative row for the best-TAC solution cluster."""
     costs = pd.to_numeric(metrics["ESM TAC"], errors="coerce")
     actual_best = float(costs.min())
     _assert_close_metric("best-row ESM TAC", best_tac, actual_best)
@@ -265,6 +282,7 @@ def _best_solution_row(metrics: pd.DataFrame, best_tac: float) -> pd.Series:
 
 
 def _finite_metric_values(metrics: pd.DataFrame, metric: str) -> np.ndarray:
+    """Extract finite numeric metric values, dropping workbook noise."""
     values = pd.to_numeric(metrics[metric], errors="coerce").dropna().to_numpy(dtype=float)
     return values[np.isfinite(values)]
 
@@ -293,10 +311,13 @@ def _assert_threshold_count(
     current_best_tac: float,
     threshold: float,
 ) -> None:
+    """Allow a one-count drift when costs land on the threshold boundary."""
     if current == baseline:
         return
     baseline_limit = baseline_best_tac * (1 + threshold)
     current_limit = current_best_tac * (1 + threshold)
+    # Solver ordering can flip which near-tied solution lands exactly on the
+    # threshold, changing the bucket count by one without changing TAC quality.
     has_near_threshold_tie = _has_near_threshold_tie(
         baseline_costs,
         baseline_limit,
@@ -307,6 +328,7 @@ def _assert_threshold_count(
 
 
 def _has_near_threshold_tie(costs: np.ndarray, threshold: float) -> bool:
+    """Detect costs that are effectively equal to a threshold within test tolerances."""
     return bool(np.isclose(costs, threshold, rtol=THRESHOLD_TIE_REL_TOL, atol=TAC_ABS_TOL).any())
 
 
@@ -324,6 +346,7 @@ def _int_metric(row: pd.Series, metric: str) -> int:
 
 
 def _weighted_success_count(result_payloads: list[dict]) -> int:
+    """Mirror the production weighted ESM counting used in run summaries."""
     total = 0
     for payload in result_payloads:
         if not payload["success"]:

@@ -11,6 +11,8 @@ from ..classes import HeatExchangerNetworkProblem
 
 @dataclass(frozen=True)
 class ProblemRunResult:
+    """Multiprocessing-safe envelope for one attempted legacy problem solve."""
+
     problem: HeatExchangerNetworkProblem
     success: bool
     failure_reason: str | None = None
@@ -22,17 +24,8 @@ def run_single_solution(
         print_output: bool,
         evolution: True | False = False,
     ) -> HeatExchangerNetworkProblem | None:
-    """   
-    Calls get_solution to solve model in GEKKO and loops for the specified number of networks. Must be called seperately to class initialisation
+    """Compatibility wrapper returning the old ``[problem]``/``None`` shape."""
 
-    Args:
-    - problem: built but not yet solved single case
-    - print_output: enable print output of network metrics and matches
-    - evolution: evolution toggle, either True or False
-
-    Returns:
-    - the solved case
-    """
     result = run_single_solution_result(problem, print_output=print_output, evolution=evolution)
     return [problem] if result.success else None
 
@@ -60,6 +53,8 @@ def run_single_solution_result(
 
     if not getattr(solution, "mSuccess", 0):
         solver_run = getattr(solution, "solver_run", None)
+        # Prefer the structured failure reason from the solver wrapper when it
+        # exists; older models only expose the GEKKO success flag.
         reason = getattr(solver_run, "failure_reason", None) or f"solver status {getattr(solution, 'mSuccess', None)}"
         problem.solution_failure_reason = reason
         return ProblemRunResult(problem=problem, success=False, failure_reason=reason)
@@ -94,18 +89,7 @@ def run_parallel_solutions(
         print_output: bool = False,
         evolution: True | False = False
     ) -> list[HeatExchangerNetworkProblem]:
-    """
-    Solves each case on a seperate CPU core
-    
-    Packages HEN problem into a tuple allowing it to be solved via parallel computing to make it faster
-    
-    Args:
-    - problems: list of built but not yet solved cases
-    - number_of_networks: number of networks to return i.e number of cuts + 1 so 2 networs will integer cut once
-    - max_parallel: number of worker threads to be used for parallel execution
-    - print_output: print output of network metrics and matches
-    - evolution: evolution toggle, either True or False
-    """
+    """Solve problems in parallel and return only successful legacy objects."""
 
     solved_cases = []
     with multiprocessing.Pool(processes=max_parallel) as pool:
@@ -132,7 +116,11 @@ def run_parallel_solution_results(
         print_output: bool = False,
         evolution: True | False = False
     ) -> list[ProblemRunResult]:
-    """Solve cases in parallel and return one result record per attempted problem."""
+    """Solve cases in parallel and return one result record per attempted problem.
+
+    The task workflow uses this richer form so failed solver jobs still appear
+    in ``TaskOutcome`` records and artifacts.
+    """
 
     results = []
     with multiprocessing.Pool(processes=max_parallel) as pool:

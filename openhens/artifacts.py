@@ -1,4 +1,4 @@
-"""Durable study artifact writing and loading."""
+"""Write and reload the durable JSON/CSV artifacts for a study run."""
 
 from __future__ import annotations
 
@@ -73,13 +73,24 @@ def write_study_artifacts(
     created_at: datetime | str | None = None,
     completed_at: datetime | str | None = None,
 ) -> StudyOutcome:
-    """Write one run's JSON/CSV artifacts and return a reconstructable outcome."""
+    """Persist one run's artifacts and return a reconstructable outcome.
+
+    The on-disk layout is intentionally stable:
+
+    - ``manifest.json`` describes the run and lists every emitted artifact.
+    - ``results/<task_id>.json`` stores one serialized ``TaskOutcome`` per task.
+    - ``metrics/*.csv`` stores the summary tables that downstream tooling reads.
+
+    Optional workbook and plot exports extend that layout without changing the
+    JSON/CSV contract used by tests and reload paths.
+    """
 
     outputs = outputs or study.outputs
     run_id = run_id or outputs.run_id or _default_run_id()
     run_folder = outputs.folder / run_id
     results_folder = run_folder / "results"
     metrics_folder = run_folder / "metrics"
+    # Keep the artifact tree predictable so manifests can use relative paths.
     results_folder.mkdir(parents=True, exist_ok=True)
     metrics_folder.mkdir(parents=True, exist_ok=True)
 
@@ -129,10 +140,14 @@ def write_study_artifacts(
 
     excel_paths: tuple[Path, ...] = ()
     if outputs.include_excel:
+        # Workbook export stays opt-in because it pulls in the pandas/openpyxl
+        # stack and is not required for round-tripping study outcomes.
         excel_paths = _write_excel_artifacts(run_folder, solution_metrics, run_summary)
 
     plot_paths: tuple[Path, ...] = ()
     if outputs.include_plots and solution_metrics:
+        # Plot generation is also optional and only meaningful once there are
+        # solved rows to visualise.
         plot_paths = _write_plot_artifacts(run_folder, solution_metrics)
 
     manifest = manifest.model_copy(
@@ -148,7 +163,13 @@ def write_study_artifacts(
 
 
 def load_study_outcome(manifest: str | Path | StudyManifest) -> StudyOutcome:
-    """Reconstruct a ``StudyOutcome`` from ``manifest.json`` and result JSON files."""
+    """Reconstruct a ``StudyOutcome`` from a manifest and its result payloads.
+
+    Relative paths in ``manifest.json`` are resolved from the manifest's parent
+    folder so copied run directories remain self-contained. When a
+    ``StudyManifest`` object is passed directly, no source folder is available;
+    relative paths are resolved from the current working directory.
+    """
 
     if isinstance(manifest, StudyManifest):
         manifest_model = manifest
@@ -185,6 +206,7 @@ def solution_metric_rows(
     *,
     date: str | None,
 ) -> list[dict[str, object]]:
+    """Project solved network models into the stable solution-metrics schema."""
     rows: list[dict[str, object]] = []
     for solution in solutions:
         unit_counts = solution.unit_counts
@@ -218,6 +240,7 @@ def solution_metric_rows(
 
 
 def run_summary_rows(outcome: StudyOutcome, *, date: str | None) -> list[dict[str, object]]:
+    """Build the single-row run summary consumed by regression baselines."""
     solutions = [
         solution
         for solution in outcome.solutions.solutions
@@ -244,6 +267,8 @@ def run_summary_rows(outcome: StudyOutcome, *, date: str | None) -> list[dict[st
             "Best Solution": best_tac,
             "Best Task ID": best.task_id if best is not None else "",
             "Total Cases Attempted": outcome.attempted_solver_jobs,
+            # Historical spreadsheets count one successful ESM sweep as eleven
+            # attempted cases, so the CSV summary preserves that convention.
             "Total Cases Solved": _weighted_success_count(outcome.task_outcomes),
             "Total Run Time (s)": outcome.total_run_time_seconds,
             "Quartile 1": quartiles[0],
@@ -271,6 +296,7 @@ def _write_excel_artifacts(
     solution_metrics: Sequence[dict[str, object]],
     run_summary: Sequence[dict[str, object]],
 ) -> tuple[Path, ...]:
+    """Write the legacy workbook exports expected by older result bundles."""
     solution_path = Path("metrics") / "Solution Metrics.xlsx"
     summary_path = Path("metrics") / "Run Metrics.xlsx"
     pd.DataFrame(solution_metrics, columns=SOLUTION_METRIC_COLUMNS).to_excel(run_folder / solution_path, index=False)
@@ -279,6 +305,7 @@ def _write_excel_artifacts(
 
 
 def _write_plot_artifacts(run_folder: Path, solution_metrics: Sequence[dict[str, object]]) -> tuple[Path, ...]:
+    """Generate Plotly-derived study plots and return only the new artifact paths."""
     from .analysis.analysis_tools import plot_metric_relationships
 
     metrics = pd.DataFrame(solution_metrics, columns=SOLUTION_METRIC_COLUMNS)
@@ -294,6 +321,7 @@ def _artifact_paths(
     excel_paths: Sequence[Path],
     plot_paths: Sequence[Path],
 ) -> tuple[Path, ...]:
+    """Return the manifest's complete artifact inventory in stable display order."""
     paths: list[Path] = [manifest.manifest_path, *manifest.result_paths]
     if manifest.solution_metrics_path is not None:
         paths.append(manifest.solution_metrics_path)
@@ -305,6 +333,7 @@ def _artifact_paths(
 
 
 def _solver_metadata(task_outcomes: Sequence[TaskOutcome]) -> tuple[dict[str, object], ...]:
+    """Capture lightweight per-task solver details for later inspection."""
     records = []
     for outcome in task_outcomes:
         solver = outcome.solver or (outcome.solution.solver if outcome.solution is not None else None)
@@ -322,6 +351,7 @@ def _solver_metadata(task_outcomes: Sequence[TaskOutcome]) -> tuple[dict[str, ob
 
 
 def _weighted_success_count(task_outcomes: Sequence[TaskOutcome]) -> int:
+    """Count solved tasks using the workbook-era weighting for ESM sweeps."""
     return sum(
         ESM_ATTEMPT_WEIGHT if outcome.task.method == "ESM" else 1
         for outcome in task_outcomes

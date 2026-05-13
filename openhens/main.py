@@ -20,6 +20,12 @@ import sys
 
 
 class OpenHensOptions:
+    """Legacy keyword-option container kept as the facade's compatibility layer.
+
+    New code should prefer ``SynthesisStudy``. The facade still normalizes both
+    entry styles through this object so the rest of the solve path can share one
+    set of option names while the refactor is in progress.
+    """
 
     def __init__(self, **kwargs) -> None:
         # default options
@@ -38,17 +44,11 @@ class OpenHensOptions:
             setattr(self, k, v)
 
 class OpenHENS:
-    """
-    OpenHens class to solve HEN problems
+    """Facade for running a heat-exchanger-network synthesis study.
 
-    Methods:
-    - solve: solve the problem
-    - display_results: plots key results from the solved problem
-    - _from_run: plots the best solution from the current solve
-    - _from_run_from_file: plots the best solution from all solves
-
-    Options:
-    - see OpenHensOptions for available options
+    The preferred entry point is ``OpenHENS(SynthesisStudy(...)).solve()``. The
+    legacy ``OpenHENS(**options)`` path remains supported by converting options
+    into the same domain objects used by the new workflow.
     """
 
     def __init__(self, study: SynthesisStudy | CaseStudy | None = None, **options) -> None:
@@ -68,6 +68,8 @@ class OpenHENS:
         self.set_log_level(self.options.log_level)
 
     def _coerce_study(self, study: SynthesisStudy | CaseStudy | None) -> SynthesisStudy | None:
+        """Accept the public aggregate or a bare case shell at the facade edge."""
+
         if study is None:
             return None
         if isinstance(study, SynthesisStudy):
@@ -77,6 +79,13 @@ class OpenHENS:
         raise TypeError("study must be a SynthesisStudy, CaseStudy, or None")
 
     def _options_from_study(self, study: SynthesisStudy) -> OpenHensOptions:
+        """Map the DDD-style public API to the legacy option names.
+
+        The legacy model constructors still expect ``min_dT_list`` and
+        ``min_dqda_list``. Keeping that translation here prevents those names
+        from leaking back into the public ``SynthesisStudy`` API.
+        """
+
         stage_selection = study.design_space.stage_selection
         if stage_selection != "automated":
             stage_selection = list(stage_selection)
@@ -94,6 +103,8 @@ class OpenHENS:
         )
       
     def set_log_level(self, level: int) -> None:
+        """Apply a facade-level log level to existing or lazily-created handlers."""
+
         logger.setLevel(level)
 
         if not logger.handlers:
@@ -104,9 +115,13 @@ class OpenHENS:
                 h.setLevel(level)  # <- override even fallback INFO level
         
     def solve(self) -> StudyOutcome:
+        """Run the supported standard workflow and return durable study results.
+
+        Phase one only wires the canonical PDM -> TDM -> ESM sequence with the
+        default solver choices. Other ``MethodSequence`` values are valid data
+        models, but execution support is intentionally deferred.
         """
-        Solve the problem
-        """
+
         if self.study is not None and self.study.methods != MethodSequence.standard_pdm_tdm_esm():
             raise NotImplementedError(
                 "Custom method sequences and solver choices will be wired into solve in a later refactor step."
@@ -116,7 +131,6 @@ class OpenHENS:
         self._output_folder = Path(self.options.output_folder)
         self._output_folder.mkdir(parents=True, exist_ok=True)
         
-        # Run 
         self.solutions = self._get_optimal_network(
             problem_file = self._problem_file, 
             min_dqda_list = self.options.min_dqda_list,
@@ -133,6 +147,13 @@ class OpenHENS:
     
 
     def display_run_metrics(self) -> None:
+        """Log paths to the current run's metrics artifacts.
+
+        Reporting now consumes the CSV artifacts written by ``solve()``. This
+        method intentionally does not regenerate Excel files or plots; those are
+        controlled by ``StudyOutputs`` during artifact writing.
+        """
+
         if not hasattr(self, "study_outcome") or not hasattr(self, "_run_folder"):
             logger.warning("No study artifacts are loaded; run solve() before displaying run metrics")
             return
@@ -150,6 +171,8 @@ class OpenHENS:
             logger.warning(f"Run summary artifact missing: {summary_path}")
         
     def display_best_from_run(self) -> None:
+        """Render the best legacy in-memory problem from the current solve."""
+
         if len(self._best_solns) == 0:
             logger.warning("No solutions found, skipping display best from run")
             return
@@ -159,6 +182,8 @@ class OpenHENS:
 
 
     def display_n_best_from_file(self, n_best: int = 1) -> None:
+        """Log the nth-best solution available in loaded durable artifacts."""
+
         if not hasattr(self, "study_outcome"):
             logger.warning("No study outcome is loaded; run solve() or load artifacts first")
             return
@@ -184,16 +209,13 @@ class OpenHENS:
             stage_selection, 
         ) -> list[HeatExchangerNetworkProblem]:
         """
-        Builds and solves different model types for a specific HEN synthesis problem
-        
-        For each model type the user specified model parameters are passed into the HEN problem class and returns a seperate list of the solved objects
-        
-        Args:
-        - problem_file: filename of problem
-        - stages_list: list containing the specified stages that the problem will be solved with
-        - min_dqda_list: list containing the specified min dQ/dA that the problem will be with
-        - min_dT_list: minimum dT for all problem objects created
+        Build and solve the standard PDM -> TDM -> ESM workflow.
+
+        This method now delegates orchestration to ``run_synthesis_workflow`` and
+        then keeps the historic ``self.solutions``/``self._best_solns`` shape for
+        callers that still inspect in-memory model objects.
         """
+
         study = self.study or self._study_from_legacy_options(
             problem_file=problem_file,
             min_dqda_list=min_dqda_list,
@@ -227,6 +249,8 @@ class OpenHENS:
         solutions: list[NetworkSolution],
         n_best: int,
     ) -> list[NetworkSolution]:
+        """Rank durable network records by total annual cost."""
+
         ranked = sorted(
             (solution for solution in solutions if solution.total_annual_cost is not None),
             key=lambda solution: solution.total_annual_cost,
@@ -238,6 +262,8 @@ class OpenHENS:
         solutions: list[HeatExchangerNetworkProblem],
         n_best: int,
     ) -> list[HeatExchangerNetworkProblem]:
+        """Rank legacy solved problem objects by total annual cost."""
+
         ranked = sorted(solutions, key=lambda solution: solution.case.TAC)
         return ranked[:n_best] if n_best > 0 else ranked
 
@@ -248,6 +274,8 @@ class OpenHENS:
         min_dT_list,
         stage_selection,
     ) -> SynthesisStudy:
+        """Construct a public study aggregate from legacy facade options."""
+
         if stage_selection != "automated":
             stage_selection = tuple(stage_selection)
 

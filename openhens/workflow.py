@@ -85,6 +85,7 @@ class LocalSynthesisExecutor:
         max_parallel: int,
         print_output: bool,
     ) -> tuple[SynthesisTaskOutcome, ...]:
+        """Build legacy solver problems, run them in parallel, and restore task order."""
         if not tasks:
             return ()
 
@@ -94,6 +95,8 @@ class LocalSynthesisExecutor:
             try:
                 problem = self._build_problem(task, parent_outcomes)
             except Exception as exc:
+                # Keep build-time contract failures as task outcomes so downstream orchestration
+                # can report a complete workflow result without special-casing executor errors.
                 failed[task.task_id] = SynthesisTaskOutcome(
                     task=task,
                     success=False,
@@ -112,6 +115,8 @@ class LocalSynthesisExecutor:
                 print_output=print_output,
                 evolution=any(task.evolution_enabled for task, _ in built),
             )
+            # The multiprocessing path only knows about legacy problems, so the synthesized task
+            # id is attached before dispatch and used again when results come back unordered.
             results_by_task_id = {
                 getattr(result.problem, "synthesis_task_id"): result
                 for result in solved_results
@@ -160,6 +165,8 @@ class LocalSynthesisExecutor:
                     )
                 )
 
+        # Re-emit outcomes in submission order so callers can zip tasks and results deterministically
+        # even though solving happened in parallel and some tasks may have failed before dispatch.
         return tuple(failed.get(task.task_id) or next(outcome for outcome in outcomes if outcome.task_id == task.task_id) for task in tasks)
 
     def _build_problem(
@@ -167,6 +174,7 @@ class LocalSynthesisExecutor:
         task: SynthesisTask,
         parent_outcomes: Mapping[str, SynthesisTaskOutcome],
     ) -> HeatExchangerNetworkProblem:
+        """Translate a task into the legacy problem object expected by the solver workers."""
         if task.parent_task_ids:
             missing_parents = [task_id for task_id in task.parent_task_ids if task_id not in parent_outcomes]
             if missing_parents:
@@ -244,7 +252,7 @@ def run_synthesis_workflow(
 
 
 def build_pdm_tasks(study: SynthesisStudy) -> tuple[SynthesisTask, ...]:
-    """Generate initial PDM tasks from a study design space."""
+    """Generate the root PDM tasks by sweeping each configured approach temperature."""
 
     tasks: list[SynthesisTask] = []
     for min_dT in study.design_space.approach_temperatures:
@@ -273,13 +281,15 @@ def build_tdm_tasks(
     study: SynthesisStudy,
     pdm_outcomes: Sequence[SynthesisTaskOutcome],
 ) -> tuple[SynthesisTask, ...]:
-    """Generate TDM tasks from successful PDM outcomes."""
+    """Generate TDM tasks by fanning out each successful PDM topology over `min_dqda`."""
 
     tasks: list[SynthesisTask] = []
     for outcome in pdm_outcomes:
         if not _is_successful_method(outcome, "PDM"):
             continue
         topology = required_topology_from_outcome(outcome, "TDM")
+        # TDM inherits the structural decisions discovered by PDM and only explores the
+        # derivative threshold axis of the design space.
         stages = topology.stages
         restrictions = topology.restrictions()
         for min_dqda in study.design_space.derivative_thresholds:
@@ -308,13 +318,15 @@ def build_esm_tasks(
     study: SynthesisStudy,
     tdm_outcomes: Sequence[SynthesisTaskOutcome],
 ) -> tuple[SynthesisTask, ...]:
-    """Generate ESM tasks from successful TDM outcomes."""
+    """Generate one ESM refinement task for each successful TDM topology."""
 
     tasks: list[SynthesisTask] = []
     for outcome in tdm_outcomes:
         if not _is_successful_method(outcome, "TDM"):
             continue
         topology = required_topology_from_outcome(outcome, "ESM")
+        # ESM does not branch further here; it upgrades the discrete TDM solution into the
+        # non-isothermal economic solve while preserving inherited topology restrictions.
         stages = topology.stages
         restrictions = topology.restrictions()
         fields = _task_fields(
@@ -339,6 +351,7 @@ def build_esm_tasks(
 
 
 def extract_topology(problem: HeatExchangerNetworkProblem) -> TaskTopology:
+    """Pull the minimum downstream task-shaping data out of a solved legacy problem."""
     case = problem.case
     return TaskTopology(
         stages=getattr(case, "stages", None),
@@ -404,6 +417,7 @@ def extract_solver_run(
     problem: HeatExchangerNetworkProblem,
     task: SynthesisTask | None = None,
 ) -> SolverRun:
+    """Normalize solver metadata from either modern `SolverRun` objects or legacy GEKKO state."""
     case = getattr(problem, "case", problem)
     solver_run = getattr(case, "solver_run", None)
     solver_name = task.solver if task is not None else getattr(problem, "solver", getattr(case, "solver", "unknown"))
@@ -434,8 +448,11 @@ def extract_solver_run(
 
 
 def required_topology_from_outcome(outcome: SynthesisTaskOutcome, downstream_method: str) -> TaskTopology:
+    """Return topology needed for downstream task generation, or fail loudly if it is absent."""
     topology = outcome.topology
     if topology is None and outcome.solution is not None:
+        # Some tests and serialized fixtures only keep the durable solution payload, so recover
+        # the topology from there before enforcing the workflow contract.
         topology = TaskTopology(
             stages=outcome.solution.stages,
             recovery_heat_duties=outcome.solution.recovery_heat_duties,
@@ -462,6 +479,7 @@ def _task_fields(
     study: SynthesisStudy,
     **fields: Any,
 ) -> dict[str, Any]:
+    """Merge study-wide defaults into task-specific fields before id generation."""
     return {
         "case_reference": study.case.source,
         "stage_selection": study.design_space.stage_selection,
@@ -471,13 +489,17 @@ def _task_fields(
 
 
 def _task_id(fields: Mapping[str, Any]) -> str:
+    """Create a stable task id from the JSON form of the scheduling-relevant task fields."""
     payload = _jsonable_task_payload(fields)
+    # Keep ids deterministic across runs and Python versions by hashing the compact, sorted JSON
+    # representation rather than relying on dict ordering or object repr output.
     digest = hashlib.sha1(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:12]
     method = str(fields["method"]).lower()
     return f"{method}-{digest}"
 
 
 def _jsonable_task_payload(fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert task fields into JSON-serializable primitives used by `_task_id`."""
     payload: dict[str, Any] = {}
     for key, value in fields.items():
         if key == "numerical_settings":
@@ -496,12 +518,14 @@ def _is_successful_method(outcome: SynthesisTaskOutcome, method: str) -> bool:
 
 
 def _legacy_stage_selection(stage_selection):
+    """Preserve the legacy API contract for stage selection values."""
     if stage_selection == "automated":
         return stage_selection
     return list(stage_selection)
 
 
 def _extract_recovery_heat_duties(values) -> tuple[tuple[tuple[float, ...], ...], ...] | None:
+    """Extract mandatory topology restrictions using strict float coercion."""
     if values is None:
         return None
     return tuple(
@@ -529,7 +553,10 @@ def _extract_1d_values(values) -> tuple[float | None, ...] | None:
 
 
 def _as_float(value) -> float:
+    """Coerce GEKKO scalars and one-item containers into plain floats."""
     try:
+        # Older GEKKO-backed cases sometimes surface values as `[x]`, numpy-like containers,
+        # or dict-like wrappers instead of scalars, so we peel one layer before conversion.
         return float(value[0])
     except (TypeError, IndexError, KeyError):
         return float(value)

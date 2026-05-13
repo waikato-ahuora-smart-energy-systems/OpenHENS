@@ -15,7 +15,13 @@ GEKKO_SOLVERS = {"ipopt-GEKKO", "apopt"}
 
 
 def configure_gekko_solver(model: Any, solver_name: str) -> SolverRun:
-    """Apply the legacy GEKKO/Pyomo solver options to a model."""
+    """Apply legacy GEKKO/Pyomo solver options and return initial metadata.
+
+    GEKKO uses ``SOLVER_EXTENSION='pyomo'`` for external Pyomo-backed solvers
+    such as Couenne, while APOPT/IPOPT-through-GEKKO use extension ``0``. The
+    wrapper preserves those conventions in one place so model classes no longer
+    duplicate solver setup details.
+    """
 
     if solver_name in PYOMO_SOLVERS:
         extension: str | int | None = "pyomo"
@@ -44,6 +50,8 @@ def configure_gekko_solver(model: Any, solver_name: str) -> SolverRun:
         model.options.OTOL = 1e-2
 
     if model.options.SOLVER_EXTENSION == "pyomo":
+        # ``available()`` mirrors the previous eager validation and gives a
+        # clear failure before the expensive GEKKO solve is attempted.
         SolverFactory(model.options.SOLVER).available()
 
     return SolverRun(name=solver_name, extension=extension)
@@ -56,7 +64,12 @@ def solve_gekko_model(
     disp: bool = False,
     debug: int = 0,
 ) -> SolverRun:
-    """Run GEKKO solve and return JSON-compatible metadata."""
+    """Run ``model.solve`` and normalize success/failure into ``SolverRun``.
+
+    GEKKO and Pyomo raise different exception types depending on the backend.
+    The workflow only needs a stable failure reason and numeric metadata, so the
+    exception is captured here rather than leaking solver-specific objects.
+    """
 
     extension = getattr(model.options, "SOLVER_EXTENSION", None)
     start = time.time()

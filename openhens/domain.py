@@ -214,7 +214,13 @@ class ExchangerEconomics(OpenHENSModel):
 
 
 class CaseStudy(OpenHENSModel):
-    """Reference to validated case data parsed from a workbook-export CSV."""
+    """Case-study input shell, optionally populated with validated CSV rows.
+
+    Use ``CaseStudy.from_csv(...)`` when code needs row-level validation or the
+    typed stream/utility/economics models. ``CaseStudy(source=...)`` is also
+    accepted as a path-only compatibility shell for solve paths that still let
+    the legacy model loader read the CSV directly.
+    """
 
     source: Path
     name: str | None = None
@@ -226,24 +232,36 @@ class CaseStudy(OpenHENSModel):
 
     @classmethod
     def from_csv(cls, source: str | Path, *, name: str | None = None) -> "CaseStudy":
+        """Load a workbook-export CSV with delimiter autodetection and row validation."""
+
         path = Path(source)
         rows = _read_case_csv(path)
         return cls(source=path, name=name, **_parse_case_rows(rows))
 
     @property
     def exchange_economics(self) -> ExchangerEconomics:
+        """Return the process-process exchanger cost row required by the legacy model."""
+
         return _single_economics(self.exchanger_economics, "exchange")
 
     @property
     def heating_economics(self) -> ExchangerEconomics:
+        """Return the hot-utility exchanger cost row required by the legacy model."""
+
         return _single_economics(self.exchanger_economics, "heating")
 
     @property
     def cooling_economics(self) -> ExchangerEconomics:
+        """Return the cold-utility exchanger cost row required by the legacy model."""
+
         return _single_economics(self.exchanger_economics, "cooling")
 
     def to_legacy_arrays(self, dTmin: float) -> dict[str, np.ndarray]:
-        """Return arrays expected by the current mathematical model classes."""
+        """Return the array names and shapes expected by the current solver stack.
+
+        Missing temperature contributions intentionally fall back to ``dTmin / 2``
+        so older CSV exports still reproduce the historical preprocessing logic.
+        """
 
         default_temperature_contribution = dTmin / 2
         exchange = self.exchange_economics
@@ -295,11 +313,15 @@ class CaseStudy(OpenHENSModel):
         }
 
     def apply_to_legacy_model(self, model: object, dTmin: float) -> None:
+        """Populate a mutable legacy model instance with the expected solver arrays."""
+
         for name, values in self.to_legacy_arrays(dTmin).items():
             setattr(model, name, values)
 
 
 def _read_case_csv(path: Path) -> list[tuple[int, list[str]]]:
+    """Read a workbook-export CSV while preserving row numbers for error messages."""
+
     if not path.exists():
         raise FileNotFoundError(f"Case CSV not found: {path}")
 
@@ -315,6 +337,8 @@ def _read_case_csv(path: Path) -> list[tuple[int, list[str]]]:
 
 
 def _parse_case_rows(rows: list[tuple[int, list[str]]]) -> dict[str, tuple[OpenHENSModel, ...]]:
+    """Split a workbook export into typed sections using the shared designation column."""
+
     process_header = _find_header_row(rows, ("number", "subsystem", "description", "designation", "supply temp"))
     _find_header_row(rows, ("number", "subsystem", "description", "designation", "hx unit cost"))
     temperature_contribution_column = _temperature_contribution_column(process_header)
@@ -341,7 +365,8 @@ def _parse_case_rows(rows: list[tuple[int, list[str]]]) -> dict[str, tuple[OpenH
         elif designation in {"exchange", "heating", "cooling"}:
             exchanger_economics.append(_parse_exchanger_economics(row_number, row, designation))
         elif designation == "electricity":
-            # Current solver inputs have no electricity arrays; legacy parsing ignored this row.
+            # The workbook can carry electricity rows, but the legacy solver API
+            # has never exposed matching arrays for them.
             continue
         else:
             raise ValueError(f"row {row_number}: unknown Designation {designation!r}")
@@ -451,6 +476,8 @@ def _cell(row: list[str], index: int) -> str:
 
 
 def _raw_cell(row: list[str], index: int) -> str:
+    """Return the cell verbatim for fields where workbook spacing is user-visible."""
+
     if index >= len(row):
         return ""
     return row[index]
@@ -476,6 +503,8 @@ def _optional_numeric(
     field_name: str,
     section: str,
 ) -> float | None:
+    """Parse an optional numeric field, treating blank or absent columns as missing."""
+
     if index is None or _cell(row, index) == "":
         return None
     return _numeric(row_number, row, index, field_name, section)
@@ -490,6 +519,8 @@ def _normalise_header(value: str) -> str:
 
 
 def _find_header_row(rows: list[tuple[int, list[str]]], required_prefix: tuple[str, ...]) -> list[str]:
+    """Find a section header even when workbook exports include title rows above it."""
+
     required = tuple(_normalise_header(value) for value in required_prefix)
     for _, row in rows:
         normalised = tuple(_normalise_header(cell) for cell in row[: len(required)])
@@ -499,6 +530,12 @@ def _find_header_row(rows: list[tuple[int, list[str]]], required_prefix: tuple[s
 
 
 def _temperature_contribution_column(process_header: list[str]) -> int | None:
+    """Locate the optional process-stream temperature contribution column.
+
+    Older case-study exports omit this column entirely, so downstream parsing
+    must gracefully fall back to the historical ``dTmin / 2`` default.
+    """
+
     for index, label in enumerate(process_header):
         normalised = _normalise_header(label)
         if normalised in {"t cont", "t contribution", "temperature contribution"}:
@@ -512,6 +549,8 @@ def _require_rows(section: str, designation: str, rows: list[OpenHENSModel]) -> 
 
 
 def _single_economics(rows: tuple[ExchangerEconomics, ...], kind: ExchangerKind) -> ExchangerEconomics:
+    """Return the first matching economics row, mirroring the legacy single-row contract."""
+
     matches = tuple(row for row in rows if row.kind == kind)
     if not matches:
         raise ValueError(f"exchanger economics section: missing required {kind.title()} row")
@@ -519,6 +558,8 @@ def _single_economics(rows: tuple[ExchangerEconomics, ...], kind: ExchangerKind)
 
 
 def _validate_finite_fields(model: OpenHENSModel, *field_names: str) -> None:
+    """Centralize finite-number checks so row models report consistent errors."""
+
     for field_name in field_names:
         value = getattr(model, field_name)
         if value is not None and not math.isfinite(value):
@@ -526,15 +567,23 @@ def _validate_finite_fields(model: OpenHENSModel, *field_names: str) -> None:
 
 
 def _float_array(values) -> np.ndarray:
+    """Materialize solver-facing numeric arrays with the dtype expected downstream."""
+
     return np.array(list(values), dtype=float)
 
 
 def _str_array(values) -> np.ndarray:
+    """Materialize solver-facing string arrays without normalizing workbook text."""
+
     return np.array(list(values), dtype=str)
 
 
 class DesignSpace(OpenHENSModel):
-    """Design grid and stage-selection inputs for a synthesis study."""
+    """Design grid and stage-selection inputs for a synthesis study.
+
+    ``validation_alias`` keeps the public names aligned with the refactor plan
+    while still accepting the historical option keys used by existing callers.
+    """
 
     approach_temperatures: tuple[float, ...] = Field(
         default=(2, 4, 6, 8, 10, 12, 14, 16, 18, 20),
@@ -564,13 +613,23 @@ class DesignSpace(OpenHENSModel):
             raise ValueError("stage_selection must be 'automated' or two positive stage counts")
         if len(value) != 2:
             raise ValueError("manual stage_selection must contain exactly two stage counts")
+        # ``type(...) is int`` rejects bools, which would otherwise sneak
+        # through because ``bool`` is a subclass of ``int``.
         if any(type(stage) is not int or stage <= 0 for stage in value):
             raise ValueError("manual stage_selection stage counts must be positive integers")
         return tuple(value)
 
 
 class MethodSequence(OpenHENSModel):
-    """Method and solver sequence for a synthesis study."""
+    """Method and solver sequence for a synthesis study.
+
+    The default order and solver choices match the long-standing public OpenHENS
+    workflow so callers can opt in incrementally without changing results. In
+    this phase, ``OpenHENS.solve()`` only executes the canonical
+    ``PDM -> TDM -> ESM`` sequence with the default solver choices; custom
+    method orders or solver choices validate here but raise ``NotImplementedError``
+    at the facade until those execution paths are wired.
+    """
 
     methods: tuple[MethodName, ...] = ("PDM", "TDM", "ESM")
     pdm_solver: SolverName = "couenne"
@@ -579,6 +638,8 @@ class MethodSequence(OpenHENSModel):
 
     @classmethod
     def standard_pdm_tdm_esm(cls) -> "MethodSequence":
+        """Return the canonical public workflow ordering used by legacy entry points."""
+
         return cls()
 
     @field_validator("methods")
@@ -598,6 +659,8 @@ class SolveSetup(OpenHENSModel):
 
     @classmethod
     def local(cls, **kwargs) -> "SolveSetup":
+        """Compatibility constructor mirroring the existing local workflow defaults."""
+
         return cls(**kwargs)
 
     @field_validator("tolerance")
@@ -616,7 +679,14 @@ class SolveSetup(OpenHENSModel):
 
 
 class StudyOutputs(OpenHENSModel):
-    """Study artifact preferences for the public API."""
+    """Study artifact preferences for the public API.
+
+    Field aliases keep older option dictionaries working while the public names
+    settle on the refactored study vocabulary. JSON and CSV are currently the
+    mandatory durable outputs regardless of ``formats``; the field records the
+    requested public contract for future output negotiation. Legacy workbook and
+    plot exports are controlled by ``include_excel`` and ``include_plots``.
+    """
 
     folder: Path = Field(
         default=Path("examples/results/Four-stream-Yee-and-Grossmann-1990-1"),
@@ -659,7 +729,12 @@ class StudyOutputs(OpenHENSModel):
 
 
 class SynthesisStudy(OpenHENSModel):
-    """Top-level public entry object for an OpenHENS synthesis study."""
+    """Top-level public entry object for an OpenHENS synthesis study.
+
+    This is the stable input shell consumed by the modern facade, with
+    backcompat aliases only where the older options object leaked into user
+    code.
+    """
 
     case: CaseStudy
     name: str | None = None
@@ -703,7 +778,11 @@ class TaskRestrictions(OpenHENSModel):
     cold_utility_duties: tuple[float, ...] | None = None
 
     def to_legacy_z_restriction(self) -> list:
-        """Return the legacy ``[z, z_hu, z_cu]`` restriction shape."""
+        """Return the legacy ``[z, z_hu, z_cu]`` restriction shape.
+
+        The nested single-value lists are intentional: they preserve the exact
+        shape consumed by older solver routines and their tests.
+        """
 
         recovery = None
         if self.recovery_heat_duties is not None:
@@ -718,7 +797,11 @@ class TaskRestrictions(OpenHENSModel):
 
 
 class SynthesisTask(OpenHENSModel):
-    """Immutable description of one PDM, TDM, or ESM solve."""
+    """Immutable, serializable description of one PDM, TDM, or ESM solve.
+
+    Tasks are designed to survive queueing, JSON round-trips, and cross-process
+    handoff without carrying solver runtime objects.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -778,7 +861,13 @@ class SynthesisTask(OpenHENSModel):
 
 
 class SolverRun(OpenHENSModel):
-    """JSON-compatible metadata captured from one solver invocation."""
+    """JSON-compatible metadata captured from one solver invocation.
+
+    This is intentionally narrow so durable results can be written without
+    depending on solver-specific classes or enums. ``status`` is the raw GEKKO
+    or Pyomo status value when available, ``objective_value`` is the model
+    objective in solver units, and ``solve_time`` is elapsed wall-clock seconds.
+    """
 
     name: str
     extension: str | int | None = None
@@ -789,7 +878,18 @@ class SolverRun(OpenHENSModel):
 
 
 class NetworkSolution(OpenHENSModel):
-    """Stable public record for a solved heat-exchanger network."""
+    """Stable public record for a solved heat-exchanger network.
+
+    Only durable, JSON-friendly values belong here; solver internals stay on
+    transient workflow objects so persisted results remain easy to reload.
+
+    Units follow the legacy model arrays: temperatures in K, heat duties in kW,
+    exchanger areas in m2, and total annual cost/objective values in $/y.
+    Recovery-shaped fields use ``[hot_stream][cold_stream][stage]`` ordering;
+    stream-temperature fields use ``[stream][stage]`` ordering. ``unit_counts``
+    uses ``total``, ``recovery``, ``hot_utility``, and ``cold_utility`` keys
+    when those values were available from post-processing.
+    """
 
     name: str
     task_id: str | None = None
@@ -842,6 +942,8 @@ class TaskOutcome(OpenHENSModel):
     @classmethod
     def sync_legacy_error(cls, data):
         if isinstance(data, dict):
+            # Older workflow code populated ``error``; the durable public field
+            # is ``failure_reason``. Keep both synchronized on input.
             if data.get("failure_reason") is None and data.get("error") is not None:
                 data = data | {"failure_reason": data["error"]}
             elif data.get("error") is None and data.get("failure_reason") is not None:
@@ -854,7 +956,11 @@ class TaskOutcome(OpenHENSModel):
 
 
 class SolutionPortfolio(OpenHENSModel):
-    """Stable public shell for ranked study solutions."""
+    """Stable public shell for ranked study solutions.
+
+    The wrapper gives persisted study outputs a durable top-level shape even as
+    ranking metadata evolves around the individual solutions.
+    """
 
     solutions: tuple[NetworkSolution, ...] = ()
 
@@ -872,7 +978,17 @@ class SolutionPortfolio(OpenHENSModel):
 
 
 class StudyManifest(OpenHENSModel):
-    """Stable public shell for study artifact metadata."""
+    """Stable public shell for study artifact metadata.
+
+    This manifest points at durable outputs on disk and records the study-level
+    bookkeeping needed to reload a run without solver state. Artifact paths are
+    normally relative to the run folder containing ``manifest.json``; pass a
+    manifest path or run-folder path to ``StudyOutcome.from_artifacts`` so those
+    relative paths resolve correctly.
+
+    ``attempted_solver_jobs`` and run summaries preserve the historical ESM
+    weighting where one ESM task represents eleven attempted cases.
+    """
 
     run_id: str | None = None
     study_name: str | None = None
@@ -894,7 +1010,11 @@ class StudyManifest(OpenHENSModel):
 
 
 class StudyOutcome(OpenHENSModel):
-    """Stable public shell for a completed synthesis study."""
+    """Stable public shell for a completed synthesis study.
+
+    ``portfolio`` remains accepted as an input alias so previously persisted
+    outputs can be read back after the public field settled on ``solutions``.
+    """
 
     study: SynthesisStudy
     solutions: SolutionPortfolio = Field(
@@ -908,6 +1028,13 @@ class StudyOutcome(OpenHENSModel):
 
     @classmethod
     def from_artifacts(cls, manifest: str | Path | StudyManifest) -> "StudyOutcome":
+        """Reload a completed study from a saved manifest path or run folder.
+
+        Passing a ``StudyManifest`` object only works when its result paths are
+        absolute or relative to the current working directory. Prefer a path for
+        normal run-folder reloads because it preserves the artifact base folder.
+        """
+
         from .artifacts import load_study_outcome
 
         return load_study_outcome(manifest)

@@ -12,6 +12,13 @@ from ..logger import openhens_log as logger
 
 
 class HeatExchangerNetworkProblem: 
+    """Legacy bridge between workflow tasks and concrete model implementations.
+
+    A problem is still the mutable object expected by the existing GEKKO model
+    classes. The refactored workflow treats it as an implementation detail and
+    extracts durable ``TaskOutcome``/``NetworkSolution`` records after solving.
+    """
+
     def __init__(
             self,
             name: str = "",
@@ -41,7 +48,7 @@ class HeatExchangerNetworkProblem:
         - dTmin: specifies minimum approach temperature for a recovery heat exchanger match
         - import_file: specifies case to solve via a string containing the filename in the 'cases' folder
         - min_dqda: specifies the minimum dQ/dA for a recovery heat exchanger match. Low value means 'low bar' for unit to be considered good
-        - z_restriction: specifies wether the heat exchanger matches would be restricted from those in the init_solution (True) or any feasibloe match (False)
+        - z_restriction: legacy restriction payload in `[recovery, hot utility, cold utility]` shape. The task workflow passes nested recovery duties here to preserve upstream topology; direct legacy callers may still pass the older boolean/None forms expected by model internals.
         - minimisation_goal: specifies the objective function type
         - non_isothermal_model: specifies wether non_isothermal model is created.
         - integers: specifies wether the model has integer variables (True) or not (False)
@@ -114,6 +121,8 @@ class HeatExchangerNetworkProblem:
         self.below = PinchDecompModel(**below_args)
     
     def _build_stage_wise(self) -> None:
+        """Construct a TDM/ESM stage-wise model from parent or task topology."""
+
         stages = self.stages
         if stages is None and self.parent is not None:
             stages = self.parent.case.stages
@@ -122,6 +131,8 @@ class HeatExchangerNetworkProblem:
 
         self.case = StageWiseModel(**self.args, stages=stages) # single stage-wise model
         if self.parent is not None:
+            # Legacy parent-object initialisation is retained for direct use of
+            # ``HeatExchangerNetworkProblem`` outside the task workflow.
             self.case.set_initial_values_for_variables(self.parent.case)
     
     def _solve_pdm(self, print_output: bool = True) -> None:
