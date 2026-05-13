@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openhens"
+version = "0.5.0"
+description = "Equation-based synthesis and optimisation of heat exchanger networks."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+dependencies = [
+    "numpy",
+    "pandas",
+    "gekko>=1.2.1",
+    "openpyxl",
+    "matplotlib",
+    "pyomo",
+    "plotly",
+    "kaleido",
+    "nbformat>=4.2.0",
+    "wakepy",
+    "pydantic>=2,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+include = ["openhens*"]
+
+[tool.pytest.ini_options]
+testpaths = ["openhens/tests"]
+pythonpath = ["."]
+markers = [
+    "solver: tests that require installed mathematical solvers",
+    "slow: tests that are intentionally long-running",
+]
