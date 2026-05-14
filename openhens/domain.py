@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -18,6 +19,23 @@ OutputFormat = Literal["json", "csv", "xlsx", "png", "html"]
 StageSelection = Literal["automated"] | tuple[int, int]
 ExchangerKind = Literal["exchange", "heating", "cooling"]
 TaskObjective = Literal["hot utility", "variable total cost"]
+DEFAULT_MAX_PARALLEL = 10
+MAX_PARALLEL_ENV_VAR = "OPENHENS_MAX_PARALLEL"
+
+
+def default_max_parallel() -> int:
+    """Return the default local worker count, optionally overridden by env."""
+
+    raw_value = os.environ.get(MAX_PARALLEL_ENV_VAR)
+    if raw_value is None:
+        return DEFAULT_MAX_PARALLEL
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{MAX_PARALLEL_ENV_VAR} must be a positive integer") from exc
+    if value <= 0:
+        raise ValueError(f"{MAX_PARALLEL_ENV_VAR} must be a positive integer")
+    return value
 
 
 class OpenHENSModel(BaseModel):
@@ -654,12 +672,17 @@ class SolveSetup(OpenHENSModel):
     """Local solve controls matching the current OpenHENS defaults."""
 
     tolerance: float = 1e-3
-    max_parallel: int = 10
+    max_parallel: int = Field(default_factory=default_max_parallel)
     log_level: int = logging.WARNING
 
     @classmethod
     def local(cls, **kwargs) -> "SolveSetup":
-        """Compatibility constructor mirroring the existing local workflow defaults."""
+        """Compatibility constructor mirroring the existing local workflow defaults.
+
+        Set ``OPENHENS_MAX_PARALLEL`` to lower the default worker count for
+        local runs and solver regressions. An explicit ``max_parallel`` argument
+        always takes precedence.
+        """
 
         return cls(**kwargs)
 

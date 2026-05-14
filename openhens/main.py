@@ -35,7 +35,7 @@ class OpenHensOptions:
         self.min_dqda_list: list[float] = [0.5, 0.9, 1.3, 1.7, 2.1, 2.4, 2.8, 3.2, 3.6, 4.0]
         self.stage_selection: str | list[float] = 'automated'
         self.tolerance: float = 1e-3
-        self.max_parallel: int = 10
+        self.max_parallel: int = SolveSetup.local().max_parallel
         self.best_solns_to_save: int = 10
         self.log_level: int = logging.WARNING
         

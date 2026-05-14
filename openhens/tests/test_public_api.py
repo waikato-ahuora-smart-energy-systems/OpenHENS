@@ -30,6 +30,20 @@ def test_public_study_can_construct_facade_without_solving() -> None:
     assert model.options.best_solns_to_save == 10
 
 
+def test_solve_setup_local_reads_default_parallelism_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("OPENHENS_MAX_PARALLEL", "2")
+
+    assert SolveSetup.local().max_parallel == 2
+    assert SynthesisStudy(case=CaseStudy(source=Path("case.csv"))).solving.max_parallel == 2
+    assert OpenHENS().options.max_parallel == 2
+
+
+def test_explicit_max_parallel_overrides_env(monkeypatch) -> None:
+    monkeypatch.setenv("OPENHENS_MAX_PARALLEL", "2")
+
+    assert SolveSetup.local(max_parallel=4).max_parallel == 4
+
+
 def test_case_study_shell_can_be_passed_directly_to_facade() -> None:
     model = OpenHENS(CaseStudy(source=Path("case.csv"), name="Example"))
 

@@ -15,6 +15,7 @@ from openhens.workflow import (
     LocalSynthesisExecutor,
     run_synthesis_workflow,
 )
+from openhens.utils.branching import _pool_size
 
 
 class FakeSynthesisExecutor:
@@ -91,6 +92,11 @@ def test_workflow_attempt_count_matches_current_formula_for_successful_design_sp
     assert len([task for task in result.tasks if task.method == "TDM"]) == tdm_count
     assert len([task for task in result.tasks if task.method == "ESM"]) == esm_count
     assert result.attempted_solver_jobs == pdm_count + tdm_count + esm_count * ESM_ATTEMPT_WEIGHT
+
+
+def test_parallel_pool_size_is_capped_by_submitted_jobs() -> None:
+    assert _pool_size(max_parallel=10, job_count=3) == 3
+    assert _pool_size(max_parallel=2, job_count=10) == 2
 
 
 def test_successful_pdm_without_durable_topology_cannot_spawn_tdm_tasks() -> None:

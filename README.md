@@ -108,6 +108,19 @@ To reproduce the saved benchmark workbooks, run the optional solver tests:
 uv run pytest -m solver
 ```
 
+By default, local solves use up to 10 worker processes. Lower this for solver
+regressions on a shared machine with:
+
+```bash
+OPENHENS_MAX_PARALLEL=2 uv run pytest -m solver
+```
+
+In Python, pass an explicit value when constructing the study:
+
+```python
+solving=SolveSetup.local(max_parallel=2)
+```
+
 
 ## Removing the uv Environment
 

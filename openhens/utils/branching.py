@@ -92,7 +92,7 @@ def run_parallel_solutions(
     """Solve problems in parallel and return only successful legacy objects."""
 
     solved_cases = []
-    with multiprocessing.Pool(processes=max_parallel) as pool:
+    with multiprocessing.Pool(processes=_pool_size(max_parallel, len(problems))) as pool:
         running_processes = [
             pool.apply_async(
                 run_single_solution, args=(p, print_output, evolution)
@@ -123,7 +123,7 @@ def run_parallel_solution_results(
     """
 
     results = []
-    with multiprocessing.Pool(processes=max_parallel) as pool:
+    with multiprocessing.Pool(processes=_pool_size(max_parallel, len(problems))) as pool:
         running_processes = [
             pool.apply_async(
                 run_single_solution_result, args=(p, print_output, evolution)
@@ -137,3 +137,13 @@ def run_parallel_solution_results(
                     running_processes.remove(p)
 
     return results
+
+
+def _pool_size(max_parallel: int, job_count: int) -> int:
+    """Clamp worker count to the submitted batch size."""
+
+    if max_parallel <= 0:
+        raise ValueError("max_parallel must be positive")
+    if job_count <= 0:
+        return 1
+    return min(max_parallel, job_count)
