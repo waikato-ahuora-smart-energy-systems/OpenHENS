@@ -12,6 +12,13 @@ from ..logger import openhens_log as logger
 
 
 class HeatExchangerNetworkProblem: 
+    """Legacy bridge between workflow tasks and concrete model implementations.
+
+    A problem is still the mutable object expected by the existing GEKKO model
+    classes. The refactored workflow treats it as an implementation detail and
+    extracts durable ``TaskOutcome``/``NetworkSolution`` records after solving.
+    """
+
     def __init__(
             self,
             name: str = "",
@@ -27,6 +34,7 @@ class HeatExchangerNetworkProblem:
             parent: "HeatExchangerNetworkProblem" = None,
             tol: float = 1e-3,
             stage_selection: str | list[str] = "automated", 
+            stages: int | None = None,
         ):
         """
         Constructs arguements dictionary that contains the details for creating the model
@@ -40,13 +48,14 @@ class HeatExchangerNetworkProblem:
         - dTmin: specifies minimum approach temperature for a recovery heat exchanger match
         - import_file: specifies case to solve via a string containing the filename in the 'cases' folder
         - min_dqda: specifies the minimum dQ/dA for a recovery heat exchanger match. Low value means 'low bar' for unit to be considered good
-        - z_restriction: specifies wether the heat exchanger matches would be restricted from those in the init_solution (True) or any feasibloe match (False)
+        - z_restriction: legacy restriction payload in `[recovery, hot utility, cold utility]` shape. The task workflow passes nested recovery duties here to preserve upstream topology; direct legacy callers may still pass the older boolean/None forms expected by model internals.
         - minimisation_goal: specifies the objective function type
         - non_isothermal_model: specifies wether non_isothermal model is created.
         - integers: specifies wether the model has integer variables (True) or not (False)
         - parent: solved HEN_problem instance object containing values for initialisation of current object
         - tol: tolerance for GEKKO solver
         - stage_selection: specifies the stage selection criteria for the PDM. If 'automated', stages are automatically selected based on the number of hot and cold streams in each submodel. If a list, stages are set to the specified values.
+        - stages: explicit stage count for stage-wise TDM/ESM tasks when no parent problem object is available.
         """
         self.name = name
         self.framework = framework
@@ -61,6 +70,7 @@ class HeatExchangerNetworkProblem:
         self.parent = parent
         self.tol = tol
         self.stage_selection = stage_selection
+        self.stages = stages
 
 
     def load_model(self) -> None:
@@ -111,8 +121,18 @@ class HeatExchangerNetworkProblem:
         self.below = PinchDecompModel(**below_args)
     
     def _build_stage_wise(self) -> None:
-        self.case = StageWiseModel(**self.args, stages=self.parent.case.stages) # single stage-wise model
+        """Construct a TDM/ESM stage-wise model from parent or task topology."""
+
+        stages = self.stages
+        if stages is None and self.parent is not None:
+            stages = self.parent.case.stages
+        if stages is None:
+            raise ValueError("Stage-wise models require an explicit stage count or a parent solution.")
+
+        self.case = StageWiseModel(**self.args, stages=stages) # single stage-wise model
         if self.parent is not None:
+            # Legacy parent-object initialisation is retained for direct use of
+            # ``HeatExchangerNetworkProblem`` outside the task workflow.
             self.case.set_initial_values_for_variables(self.parent.case)
     
     def _solve_pdm(self, print_output: bool = True) -> None:
@@ -188,6 +208,7 @@ class HeatExchangerNetworkProblem:
             return self.case
         
         except ValueError as e:
+            self.solution_failure_reason = str(e)
             logger.error(f'StageWiseModel failed to load or solve. Error: {e}')
             return None
 

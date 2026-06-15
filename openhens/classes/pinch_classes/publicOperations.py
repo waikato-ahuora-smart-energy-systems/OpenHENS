@@ -214,13 +214,13 @@ def OrganiseArray(inputArray, num_dim=2, reverse=True):
     """Organises a list of temperatures that form the intervals for a PT.
     """
     if num_dim == 2:
-        inputArray[0] = list(filter((None).__ne__, inputArray[0]))
+        inputArray[0] = [value for value in inputArray[0] if value is not None]
         QuickSort_2D(inputArray)
         RemoveDuplicates_2D(inputArray)
         if reverse:
             ReverseArray_2D(inputArray)
     else:
-        inputArray = list(filter((None).__ne__, inputArray))
+        inputArray = [value for value in inputArray if value is not None]
         QuickSort_1D(inputArray)
         inputArray = RemoveDuplicates_1D(inputArray)
         if reverse:

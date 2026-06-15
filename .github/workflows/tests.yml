@@ -3,6 +3,8 @@ name: Run Pytest
 on:
   push:
     branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
 
 jobs:
   test:
@@ -10,31 +12,24 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.x'
-    
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install pytest
-        pip install -r requirements.txt
+        uv sync --dev
     
     - name: Add solvers to path
       run: |
         echo "PATH=$PATH:$PWD/solvers" >> $GITHUB_ENV
 
-    # - name: Run tests
-    #   run: |
-    #     pytest
+    - name: Run fast tests
+      run: |
+        uv run pytest -m "not solver"
