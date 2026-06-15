@@ -175,6 +175,7 @@ class LocalSynthesisExecutor:
         parent_outcomes: Mapping[str, SynthesisTaskOutcome],
     ) -> HeatExchangerNetworkProblem:
         """Translate a task into the legacy problem object expected by the solver workers."""
+        parent_problem = None
         if task.parent_task_ids:
             missing_parents = [task_id for task_id in task.parent_task_ids if task_id not in parent_outcomes]
             if missing_parents:
@@ -182,6 +183,12 @@ class LocalSynthesisExecutor:
             failed_parents = [task_id for task_id in task.parent_task_ids if not parent_outcomes[task_id].success]
             if failed_parents:
                 raise ValueError(f"Cannot build task {task.task_id} with failed parents: {failed_parents}")
+            if len(task.parent_task_ids) != 1:
+                raise ValueError(f"Task {task.task_id} expected exactly one legacy parent")
+            parent_outcome = parent_outcomes[task.parent_task_ids[0]]
+            parent_problem = parent_outcome.problem
+            if parent_problem is None:
+                raise ValueError(f"Successful parent task {parent_outcome.task_id} has no legacy problem")
 
         return HeatExchangerNetworkProblem(
             name=task.legacy_name,
@@ -194,7 +201,7 @@ class LocalSynthesisExecutor:
             minimisation_goal=task.objective,
             non_isothermal_model=task.non_isothermal_model,
             integers=task.integers,
-            parent=None,
+            parent=parent_problem,
             tol=task.numerical_settings.tolerance,
             stage_selection=_legacy_stage_selection(task.stage_selection),
             stages=task.stages,

@@ -241,14 +241,10 @@ def solution_metric_rows(
 
 def run_summary_rows(outcome: StudyOutcome, *, date: str | None) -> list[dict[str, object]]:
     """Build the single-row run summary consumed by regression baselines."""
-    solutions = [
-        solution
-        for solution in outcome.solutions.solutions
-        if solution.total_annual_cost is not None and np.isfinite(solution.total_annual_cost)
-    ]
+    solutions = _finite_esm_solutions(outcome.solutions.solutions)
     costs = [solution.total_annual_cost for solution in solutions]
     quartiles = np.quantile(costs, [0.25, 0.5, 0.75]) if costs else [0, 0, 0]
-    best = outcome.solutions.best_by_total_annual_cost()
+    best = min(solutions, key=lambda solution: solution.total_annual_cost) if solutions else None
     best_tac = best.total_annual_cost if best is not None else 0
     thresholds = {
         f"Within {int(threshold * 100)}%": sum(
@@ -276,6 +272,17 @@ def run_summary_rows(outcome: StudyOutcome, *, date: str | None) -> list[dict[st
             "Quartile 3": quartiles[2],
             **thresholds,
         }
+    ]
+
+
+def _finite_esm_solutions(solutions: Iterable[NetworkSolution]) -> list[NetworkSolution]:
+    """Return solved ESM rows used by historical run-summary workbooks."""
+    return [
+        solution
+        for solution in solutions
+        if solution.method == "ESM"
+        and solution.total_annual_cost is not None
+        and np.isfinite(solution.total_annual_cost)
     ]
 
 

@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 
 from openhens import CaseStudy, DesignSpace, OpenHENS, SolveSetup, SolverRun, StudyOutputs, SynthesisStudy, SynthesisTask
+from openhens.classes import HeatExchangerNetworkProblem
 from openhens.workflow import (
     ESM_ATTEMPT_WEIGHT,
     SynthesisTaskOutcome,
@@ -159,17 +160,23 @@ def test_downstream_tasks_include_required_topology_and_restrictions_in_json() -
     assert esm_roundtrip.restrictions.recovery_heat_duties == _topology().recovery_heat_duties
 
 
-def test_local_executor_builds_downstream_problem_without_parent_problem_object() -> None:
+def test_local_executor_builds_downstream_problem_with_parent_problem_object() -> None:
     study = _study(approach_temperatures=(2,), derivative_thresholds=(0.5,))
     pdm_task = build_pdm_tasks(study)[0]
-    pdm_outcome = SynthesisTaskOutcome(task=pdm_task, success=True, topology=_topology())
+    parent_problem = HeatExchangerNetworkProblem(name="parent", framework="PDM")
+    pdm_outcome = SynthesisTaskOutcome(
+        task=pdm_task,
+        success=True,
+        topology=_topology(),
+        problem=parent_problem,
+    )
     tdm_task = build_tdm_tasks(study, [pdm_outcome])[0]
     problem = LocalSynthesisExecutor()._build_problem(
         tdm_task,
-        parent_outcomes={pdm_task.task_id: SynthesisTaskOutcome(task=pdm_task, success=True)},
+        parent_outcomes={pdm_task.task_id: pdm_outcome},
     )
 
-    assert problem.parent is None
+    assert problem.parent is parent_problem
     assert problem.stages == 2
     assert problem.framework == "TDM"
 

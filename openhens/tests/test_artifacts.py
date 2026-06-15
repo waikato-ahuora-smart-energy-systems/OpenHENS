@@ -66,6 +66,7 @@ def test_write_artifacts_creates_json_csv_and_reconstructs(tmp_path: Path) -> No
     assert summary_rows[0]["Best Solution"] == "150.0"
     assert summary_rows[0]["Best Task ID"] == outcomes[1].task_id
     assert summary_rows[0]["Total Cases Attempted"] == "13"
+    assert summary_rows[0]["Quartile 1"] == "150.0"
 
     reconstructed = StudyOutcome.from_artifacts(run_folder)
     assert len(reconstructed.task_outcomes) == 3
