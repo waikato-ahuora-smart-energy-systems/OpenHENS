@@ -7,8 +7,9 @@ from wakepy import keep
 matplotlib.use('TkAgg') 
 
 if __name__ == '__main__':
-  
-    problem_name = 'Nine-stream-Linnhoff-and-Ahmad-1999-1'
+    # User-defined options for running OpenHENS
+    problem_name = 'Four-stream-Yee-and-Grossmann-1990-1'
+    #'Nine-stream-Linnhoff-and-Ahmad-1999-1'
     options = { 'input_folder': f'examples/cases/{problem_name}.csv', # File path to the stream data CSV
                 'output_folder': f'examples/results/{problem_name}', # File path to results folder where outputs will be saved
                 'min_dT_list': [2, 4, 6, 8, 10, 12, 14, 16, 18, 20,], # List of Δ𝑇min values that define distinct PDM instances
@@ -20,7 +21,7 @@ if __name__ == '__main__':
                 'log_level': logging.WARNING, # Logging level for controlling screen output
                } 
    
-    with keep.running(): 
+    with keep.running(): # run OpenHENS
         model = OpenHENS(**options) 
         
         model.solve()
@@ -30,6 +31,7 @@ if __name__ == '__main__':
         model.display_best_from_run()
         model.display_n_best_from_file()  
     
+    # Plot best_solns_to_save 
     i = 1
     for soln in model._best_solns:
         plt.title(f"{i} Best Solution", y=0.95)

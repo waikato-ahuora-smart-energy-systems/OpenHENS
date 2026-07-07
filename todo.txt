@@ -18,4 +18,5 @@ Features
 - [ ] Multiple utility levels
 - [ ] Video guide of using OpenHENS and how to select dTmin, stages and dQmin
 - [ ] Better display of solutions from file and current run
+- [ ] Import pinch calcs from openpinch
 
